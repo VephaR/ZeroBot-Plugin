@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	poke   = rate.NewManager[int64](time.Minute*5, 8) // 戳一戳
+	poke   = rate.NewManager[int64](time.Minute*5, 100) // 戳一戳
 	engine = control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
 		Brief:            "基础反应, 群空调",
@@ -42,14 +42,90 @@ func init() { // 插件主体
 		Handle(func(ctx *zero.Ctx) {
 			var nickname = zero.BotConfig.NickName[0]
 			switch {
-			case poke.Load(ctx.Event.GroupID).AcquireN(3):
-				// 5分钟共8块命令牌 一次消耗3块命令牌
+			case poke.Load(ctx.Event.GroupID).AcquireN(2):
+				// 5分钟共100块命令牌 一次消耗2块命令牌
 				time.Sleep(time.Second * 1)
 				ctx.SendChain(message.Text("请不要戳", nickname, " >_<"))
 			case poke.Load(ctx.Event.GroupID).Acquire():
-				// 5分钟共8块命令牌 一次消耗1块命令牌
+				// 5分钟共100块命令牌 一次消耗1块命令牌
 				time.Sleep(time.Second * 1)
 				ctx.SendChain(message.Text("喂(#`O′) 戳", nickname, "干嘛！"))
+			case poke.Load(ctx.Event.GroupID).AcquireN(2):
+				// 5分钟共100块命令牌 一次消耗2块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("戳坏了", nickname, "，你赔得起吗？"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("awa，好舒服呀(bushi)"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("嗯……不可以……啦……不要乱戳"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("喂，110吗，有人老戳我"))
+			case poke.Load(ctx.Event.GroupID).AcquireN(2):
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("再戳我让你变成女孩子喵！"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("不要再戳了呜呜……(害怕ing)"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("还戳，哼(つд⊂)(生气)"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("我要生气惹！o(>﹏<)o"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("呃啊啊啊~戳坏了……"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("再戳我我就把你吃掉喵！"))
+			case poke.Load(ctx.Event.GroupID).AcquireN(2):
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("正在定位您的真实地址……定位成功。轰炸机已经起飞喵！炸似你喵！"))
+			case poke.Load(ctx.Event.GroupID).AcquireN(2):
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("我给你超超，球球别再戳我了qwq"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("别再戳我了喵……"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("放手啦，不给戳QAQ"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("涩批，你再戳咬你喵！"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("再戳", nickname, "，我要叫我主人了"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("欸很烦欸！你戳🔨呢你"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("啊呜，你有什么心事吗？"))
+			case poke.Load(ctx.Event.GroupID).Acquire():
+				// 5分钟共100块命令牌 一次消耗1块命令牌
+				time.Sleep(time.Second * 1)
+				ctx.SendChain(message.Text("啊呜，太舒服刚刚竟然睡着了w 有什么事喵？"))
 			default:
 				// 频繁触发，不回复
 			}
