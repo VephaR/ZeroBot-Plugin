@@ -164,7 +164,7 @@ func init() {
 			}
 			// 没有人（只剩自己）的时候
 			if len(qqgrouplist) == 1 {
-				ctx.SendChain(message.Text("~群里没有ta人是单身了哦 明天再试试叭"))
+				ctx.SendChain(message.Text("群里没有ta人是单身了哦~明天再试试叭"))
 				return
 			}
 			// 随机抽娶
