@@ -27,13 +27,13 @@ var sendtext = [...][]string{
 	{ // 表白失败
 		"今天的运气有一点背哦~明天再试试叭",
 		"_(:з」∠)_下次还有机会 咱抱抱你w",
-		"今天失败了惹. 摸摸头~咱明天还有机会",
+		"今天失败了惹...摸摸头~咱明天还有机会",
 	},
 	{ // ntr成功
-		"因为你的个人魅力~~今天他就是你的了w\n\n",
+		"因为你的个人魅力~今天他就是你的了w\n\n",
 	},
 	{ // 离婚失败
-		"打是情,骂是爱,不打不亲不相爱。答应我不要分手。",
+		"打是情，骂是爱，不打不亲不相爱。答应我不要分手。",
 		"床头打架床尾和，夫妻没有隔夜仇。安啦安啦，不要闹变扭。",
 	},
 	{ // 离婚成功
@@ -162,8 +162,8 @@ func init() {
 				message.Text(
 					"\n",
 					"[", ctx.CardOrNickName(fiancee), "]",
-					"(", fiancee, ")哒",
-					"(", fiancee, ")哒\n当前你们好感度为", favor,
+					"(", fiancee, ")哒\n",
+					"当前你们好感度为", favor,
 				),
 			)
 		})
@@ -421,7 +421,7 @@ func checkSingleDog(ctx *zero.Ctx) bool {
 	patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
 	fiancee, err := strconv.ParseInt(patternParsed[1].At(), 10, 64)
 	if err != nil {
-		ctx.SendChain(message.Text("额,你的target好像不存在?"))
+		ctx.SendChain(message.Text("额，你的target好像不存在？"))
 		return false
 	}
 	// 判断是否需要重置
@@ -437,7 +437,7 @@ func checkSingleDog(ctx *zero.Ctx) bool {
 		return false
 	}
 	if groupInfo.CanMatch == 0 {
-		ctx.SendChain(message.Text("你群包分配,别在娶妻上面下功夫，好好水群"))
+		ctx.SendChain(message.Text("你群包分配，别在娶妻上面下功夫，好好水群"))
 		return false
 	}
 	// 判断CD
@@ -463,7 +463,7 @@ func checkSingleDog(ctx *zero.Ctx) bool {
 		ctx.SendChain(message.Text("笨蛋~你家里还有个吃白饭的w"))
 		return false
 	case userInfo.Target == uid: // 如果为受
-		ctx.SendChain(message.Text("该是0就是0,当0有什么不好"))
+		ctx.SendChain(message.Text("该是0就是0，当0有什么不好"))
 		return false
 	}
 	fianceeInfo, _ := 民政局.查户口(gid, fiancee)
@@ -475,7 +475,7 @@ func checkSingleDog(ctx *zero.Ctx) bool {
 		ctx.SendChain(message.Text("他有别的女人了，你该放下了"))
 		return false
 	case fianceeInfo.Target == fiancee: // 如果为受
-		ctx.SendChain(message.Text("ta被别人娶了,你来晚力"))
+		ctx.SendChain(message.Text("ta被别人娶了，你来晚力"))
 		return false
 	}
 	return true
@@ -488,7 +488,7 @@ func checkMistress(ctx *zero.Ctx) bool {
 	patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
 	fiancee, err := strconv.ParseInt(patternParsed[1].At(), 10, 64)
 	if err != nil {
-		ctx.SendChain(message.Text("额,你的target好像不存在?"))
+		ctx.SendChain(message.Text("额，你的target好像不存在？"))
 		return false
 	}
 	// 判断是否需要重置
@@ -521,7 +521,7 @@ func checkMistress(ctx *zero.Ctx) bool {
 	fianceeInfo, _ := 民政局.查户口(gid, fiancee)
 	switch {
 	case fianceeInfo == (userinfo{}): // 如果是空数据
-		ctx.SendChain(message.Text("ta现在还是单身哦,快向ta表白吧!"))
+		ctx.SendChain(message.Text("ta现在还是单身哦，快向ta表白吧！"))
 		return false
 	case fianceeInfo.Target == 0 || fianceeInfo.User == 0: // 如果是单身贵族
 		ctx.SendChain(message.Text("今天的ta是单身贵族噢"))
@@ -540,7 +540,7 @@ func checkMistress(ctx *zero.Ctx) bool {
 		ctx.SendChain(message.Text("打灭，不给纳小妾！"))
 		return false
 	case userInfo.Target == uid: // 如果为受
-		ctx.SendChain(message.Text("该是0就是0,当0有什么不好"))
+		ctx.SendChain(message.Text("该是0就是0，当0有什么不好"))
 		return false
 	}
 	return true
@@ -594,11 +594,11 @@ func checkMatchmaker(ctx *zero.Ctx) bool {
 		return false
 	}
 	if gayOne == uid || gayZero == uid {
-		ctx.SendChain(message.Text("禁止自己给自己做媒!"))
+		ctx.SendChain(message.Text("禁止自己给自己做媒！"))
 		return false
 	}
 	if gayOne == gayZero {
-		ctx.SendChain(message.Text("你这个媒人XP很怪咧,不能这样噢"))
+		ctx.SendChain(message.Text("你这个媒人XP很怪咧，不能这样噢"))
 		return false
 	}
 	// 判断是否需要重置
@@ -628,10 +628,10 @@ func checkMatchmaker(ctx *zero.Ctx) bool {
 		ctx.SendChain(message.Text("今天的攻方是单身贵族噢"))
 		return false
 	case gayOneInfo.Target == gayZero || gayOneInfo.User == gayZero:
-		ctx.SendChain(message.Text("笨蛋!ta们已经在一起了!"))
+		ctx.SendChain(message.Text("笨蛋！ta们已经在一起了！"))
 		return false
 	case gayOneInfo != (userinfo{}): // 如果不是单身
-		ctx.SendChain(message.Text("攻方不是单身,不允许给这种人做媒!"))
+		ctx.SendChain(message.Text("攻方不是单身，不允许给这种人做媒！"))
 		return false
 	}
 	// 获取用户信息
@@ -641,7 +641,7 @@ func checkMatchmaker(ctx *zero.Ctx) bool {
 		ctx.SendChain(message.Text("今天的攻方是单身贵族噢"))
 		return false
 	case gayZeroInfo != (userinfo{}): // 如果不是单身
-		ctx.SendChain(message.Text("受方不是单身,不允许给这种人做媒!"))
+		ctx.SendChain(message.Text("受方不是单身，不允许给这种人做媒！"))
 		return false
 	}
 	return true

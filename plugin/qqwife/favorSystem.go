@@ -56,7 +56,7 @@ func init() {
 			patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
 			gay, _ := strconv.ParseInt(patternParsed[1].At(), 10, 64)
 			if gay == uid {
-				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.At(uid), message.Text("你想给自己买什么礼物呢?")))
+				ctx.Send(message.ReplyWithMessage(ctx.Event.MessageID, message.At(uid), message.Text("你想给自己买什么礼物呢？")))
 				return
 			}
 			// 获取CD
@@ -119,9 +119,9 @@ func init() {
 			}
 			// 输出结果
 			if mood == 0 {
-				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了一件女装送给了ta,ta很不喜欢,你们的好感度降低至", lastfavor))
+				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了一件女装送给了ta，ta很不喜欢，你们的好感度降低至", lastfavor))
 			} else {
-				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了一件女装送给了ta,ta很喜欢,你们的好感度升至", lastfavor))
+				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了一件女装送给了ta，ta很喜欢，你们的好感度升至", lastfavor))
 			}
 		})
 	engine.OnFullMatch("好感度列表", zero.OnlyGroup, getdb).SetBlock(true).Limit(ctxext.LimitByUser).
