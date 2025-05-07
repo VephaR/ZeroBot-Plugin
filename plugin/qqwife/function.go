@@ -219,11 +219,12 @@ func init() {
 			)
 
 			var next *zero.FutureEvent
-			if ctx.State["regex_matched"].([]string)[1] == "求婚" {
-				next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
-			} else {
-				next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
-			}
+			// if ctx.State["regex_matched"].([]string)[1] == "求婚" {
+			// 	next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
+			// } else {
+			// 	next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
+			// }
+			next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
 			recv, cancel := next.Repeat()
 			defer cancel()
 			after := time.NewTimer(90 * time.Second)
