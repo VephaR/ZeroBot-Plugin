@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/rand"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/FloatTech/zbputils/ctxext"
@@ -166,6 +167,129 @@ func init() {
 					"当前你们好感度为", favor,
 				),
 			)
+		})
+	engine.OnMessage(zero.NewPattern(nil).Text(`^(求婚)`).At().AsRule(), zero.OnlyGroup, getdb, checkSingleDog).SetBlock(true).Limit(ctxext.LimitByUser).
+		Handle(func(ctx *zero.Ctx) {
+			gid := ctx.Event.GroupID
+			uid := ctx.Event.UserID
+			patternParsed := ctx.State[zero.KeyPattern].([]zero.PatternParsed)
+			// choice := patternParsed[0].Text()[0]
+			fiancee, _ := strconv.ParseInt(patternParsed[1].At(), 10, 64)
+			// 写入CD
+			err := 民政局.记录CD(gid, uid, "嫁娶")
+			if err != nil {
+				ctx.SendChain(message.At(uid), message.Text("[qqwife]你的技能CD记录失败\n", err))
+			}
+			if uid == fiancee { // 如果是自己
+				switch rand.Intn(3) {
+				case 1:
+					err := 民政局.登记(gid, uid, 0, "", "")
+					if err != nil {
+						ctx.SendChain(message.Text("[ERROR]:", err))
+						return
+					}
+					ctx.SendChain(message.Text("今日获得成就：单身贵族"))
+				default:
+					ctx.SendChain(message.Text("今日获得成就：自恋狂"))
+				}
+				return
+			}
+			favor, err := 民政局.查好感度(uid, fiancee)
+			if err != nil {
+				ctx.SendChain(message.Text("[ERROR]:", err))
+				return
+			}
+			// if favor < 30 {
+			// 	favor = 30 // 保底30%概率
+			// }
+			// if rand.Intn(101) >= favor {
+			// 	ctx.SendChain(message.Text(sendtext[1][rand.Intn(len(sendtext[1]))]))
+			// 	return
+			// }
+
+			ctx.SendChain(
+				message.At(fiancee),
+				message.Text("\n"),
+				message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(fiancee, 10)+"&s=640").Add("cache", 0),
+				message.Text(
+					"\n群友",
+					"[", ctx.CardOrNickName(uid), "]",
+					"(", fiancee, ")向你求婚，那么......你愿意嫁给ta吗？在90秒内发送【我愿意】或者【我拒绝】，对应对方哦！",
+				),
+			)
+
+			var next *zero.FutureEvent
+			if ctx.State["regex_matched"].([]string)[1] == "求婚" {
+				next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
+			} else {
+				next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
+			}
+			recv, cancel := next.Repeat()
+			defer cancel()
+			after := time.NewTimer(90 * time.Second)
+			for {
+				select {
+				case <-after.C:
+					ctx.Send(
+						message.ReplyWithMessage(ctx.Event.MessageID,
+							message.Text("对方答复超时，求婚失败噜~"),
+						),
+					)
+					return
+				case c := <-recv:
+					answer := strings.Replace(c.Event.Message.String(), "-", "", 1)
+					switch {
+					case answer == "我愿意":
+						after.Stop()
+
+						// 去民政局登记
+						var choicetext string
+						// switch choice {
+						// case "娶":
+						err := 民政局.登记(gid, uid, fiancee, ctx.CardOrNickName(uid), ctx.CardOrNickName(fiancee))
+						if err != nil {
+							ctx.SendChain(message.Text("[ERROR]:", err))
+							return
+						}
+						choicetext = "\n今天你的群老婆是"
+						// default:
+						// 	err := 民政局.登记(gid, fiancee, uid, ctx.CardOrNickName(fiancee), ctx.CardOrNickName(uid))
+						// 	if err != nil {
+						// 		ctx.SendChain(message.Text("[ERROR]:", err))
+						// 		return
+						// 	}
+						// 	choicetext = "\n今天你的群老公是"
+						// }
+						favor, err = 民政局.更新好感度(uid, fiancee, 1+rand.Intn(5))
+						if err != nil {
+							ctx.SendChain(message.Text("[ERROR]:", err))
+						}
+						// 请大家吃席
+						ctx.SendChain(
+							message.Text(sendtext[0][rand.Intn(len(sendtext[0]))]),
+							message.At(uid),
+							message.Text(choicetext),
+							message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(fiancee, 10)+"&s=640").Add("cache", 0),
+							message.Text(
+								"\n",
+								"[", ctx.CardOrNickName(fiancee), "]",
+								"(", fiancee, ")哒\n",
+								"当前你们好感度为", favor,
+							),
+						)
+						return
+					case answer == "我拒绝":
+						after.Stop()
+
+						ctx.Send(
+							message.ReplyWithMessage(ctx.Event.MessageID,
+								message.Text("对方拒绝了你，求婚失败噜~"),
+							),
+						)
+						return
+					}
+				}
+			}
 		})
 	// NTR技能
 	engine.OnMessage(zero.NewPattern(nil).Text(`^当`).At().Text(`的小三`).AsRule(), zero.OnlyGroup, getdb, checkMistress).SetBlock(true).Limit(ctxext.LimitByUser).
