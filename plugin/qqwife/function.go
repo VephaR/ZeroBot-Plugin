@@ -212,9 +212,8 @@ func init() {
 				message.Text("\n"),
 				message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(fiancee, 10)+"&s=640").Add("cache", 0),
 				message.Text(
-					"\n群友",
-					"[", ctx.CardOrNickName(uid), "]",
-					"(", fiancee, ")向你求婚，那么......你愿意嫁给ta吗？在90秒内发送【我愿意】或者【我拒绝】，对应对方哦！",
+					"\n[", ctx.CardOrNickName(uid), "]",
+					"(", fiancee, ")向你求婚，那么......你愿意嫁给ta吗？在90秒内发送【我愿意】或者【我拒绝】，回应对方哦！",
 				),
 			)
 
@@ -239,6 +238,7 @@ func init() {
 					return
 				case c := <-recv:
 					answer := strings.Replace(c.Event.Message.String(), "-", "", 1)
+					ctx.SendChain(message.Text("[answer]:", answer))
 					switch {
 					case answer == "我愿意":
 						after.Stop()
