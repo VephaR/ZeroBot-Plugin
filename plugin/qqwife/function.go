@@ -4,7 +4,6 @@ import (
 	"errors"
 	"math/rand"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/FloatTech/zbputils/ctxext"
@@ -27,8 +26,8 @@ var sendtext = [...][]string{
 	},
 	{ // 表白失败
 		"今天的运气有一点背哦~明天再试试叭",
-		"_(:з」∠)_下次还有机会 咱抱抱你w",
-		"今天失败了惹...摸摸头~咱明天还有机会",
+		"_(:з」∠)_下次还有机会哦~咱抱抱你w",
+		"今天失败噜...摸摸头~咱明天还有机会",
 	},
 	{ // ntr成功
 		"因为你的个人魅力~今天他就是你的了w\n\n",
@@ -38,8 +37,8 @@ var sendtext = [...][]string{
 		"床头打架床尾和，夫妻没有隔夜仇。安啦安啦，不要闹变扭。",
 	},
 	{ // 离婚成功
-		"离婚成功力\n话说你不考虑当个1？",
-		"离婚成功力\n天涯何处无芳草，何必单恋一枝花？不如再摘一支（bushi）",
+		"离婚成功噜\n话说你不考虑当个1？",
+		"离婚成功噜\n天涯何处无芳草，何必单恋一枝花？",
 	},
 }
 
@@ -206,23 +205,16 @@ func init() {
 			// 	ctx.SendChain(message.Text(sendtext[1][rand.Intn(len(sendtext[1]))]))
 			// 	return
 			// }
-
 			ctx.SendChain(
 				message.At(fiancee),
 				message.Text("\n"),
 				message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(fiancee, 10)+"&s=640").Add("cache", 0),
 				message.Text(
 					"\n[", ctx.CardOrNickName(uid), "]",
-					"(", fiancee, ")向你求婚，那么......你愿意嫁给ta吗？在90秒内发送【我愿意】或者【我拒绝】，回应对方哦！",
+					"(", fiancee, ")向你求婚，那么...你愿意嫁给ta吗？在90秒内发送【我愿意】或者【我拒绝】，回应对方哦！",
 				),
 			)
-
 			var next *zero.FutureEvent
-			// if ctx.State["regex_matched"].([]string)[1] == "求婚" {
-			// 	next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
-			// } else {
-			// 	next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
-			// }
 			next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.CheckGroup(ctx.Event.GroupID))
 			recv, cancel := next.Repeat()
 			defer cancel()
@@ -237,32 +229,20 @@ func init() {
 					)
 					return
 				case c := <-recv:
-					answer := strings.Replace(c.Event.Message.String(), "-", "", 1)
-					ctx.SendChain(message.Text("[answer]:", answer))
-					ctx.SendChain(message.Text("c.Event.Message.String:", c.Event.Message.String()))
-					ctx.SendChain(message.Text("c.Event.UserID:", c.Event.UserID))
+					answer := c.Event.Message.String()
+					aid := c.Event.UserID
 					switch {
-					case answer == "我愿意":
+					case answer == "我愿意" && aid == fiancee:
 						after.Stop()
 
 						// 去民政局登记
 						var choicetext string
-						// switch choice {
-						// case "娶":
 						err := 民政局.登记(gid, uid, fiancee, ctx.CardOrNickName(uid), ctx.CardOrNickName(fiancee))
 						if err != nil {
 							ctx.SendChain(message.Text("[ERROR]:", err))
 							return
 						}
 						choicetext = "\n今天你的群老婆是"
-						// default:
-						// 	err := 民政局.登记(gid, fiancee, uid, ctx.CardOrNickName(fiancee), ctx.CardOrNickName(uid))
-						// 	if err != nil {
-						// 		ctx.SendChain(message.Text("[ERROR]:", err))
-						// 		return
-						// 	}
-						// 	choicetext = "\n今天你的群老公是"
-						// }
 						favor, err = 民政局.更新好感度(uid, fiancee, 1+rand.Intn(5))
 						if err != nil {
 							ctx.SendChain(message.Text("[ERROR]:", err))
@@ -281,7 +261,7 @@ func init() {
 							),
 						)
 						return
-					case answer == "我拒绝":
+					case answer == "我拒绝" && aid == fiancee:
 						after.Stop()
 
 						ctx.Send(
@@ -599,10 +579,10 @@ func checkSingleDog(ctx *zero.Ctx) bool {
 		ctx.SendChain(message.Text("今天的ta是单身贵族噢"))
 		return false
 	case fianceeInfo.User == fiancee: // 如果如为攻
-		ctx.SendChain(message.Text("他有别的女人了，你该放下了"))
+		ctx.SendChain(message.Text("ta有别的女人了，你该放下了"))
 		return false
 	case fianceeInfo.Target == fiancee: // 如果为受
-		ctx.SendChain(message.Text("ta被别人娶了，你来晚力"))
+		ctx.SendChain(message.Text("ta被别人娶了，你来晚噜"))
 		return false
 	}
 	return true
@@ -725,7 +705,7 @@ func checkMatchmaker(ctx *zero.Ctx) bool {
 		return false
 	}
 	if gayOne == gayZero {
-		ctx.SendChain(message.Text("你这个媒人XP很怪咧，不能这样噢"))
+		ctx.SendChain(message.Text("你这个媒人XP很怪耶，不能这样噢"))
 		return false
 	}
 	// 判断是否需要重置
