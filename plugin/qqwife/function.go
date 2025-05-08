@@ -208,10 +208,10 @@ func init() {
 			ctx.SendChain(
 				message.At(fiancee),
 				message.Text("\n"),
-				message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(fiancee, 10)+"&s=640").Add("cache", 0),
+				message.Image("https://q4.qlogo.cn/g?b=qq&nk="+strconv.FormatInt(uid, 10)+"&s=640").Add("cache", 0),
 				message.Text(
-					"\n[", ctx.CardOrNickName(uid), "]",
-					"(", uid, ")向你求婚，那么...你愿意嫁给ta吗？在90秒内发送【我愿意】或者【我拒绝】，回应对方哦！",
+					"\n群友「", ctx.CardOrNickName(uid), "」",
+					"向你求婚，那么...你愿意嫁给ta吗？在90秒内发送【我愿意】或者【我拒绝】，回应对方哦！",
 				),
 			)
 			var next *zero.FutureEvent
@@ -331,12 +331,12 @@ func init() {
 				greenID = fianceeInfo.Target
 				choicetext = "老婆"
 			default:
-				ctx.SendChain(message.Text("数据库发生问题力"))
+				ctx.SendChain(message.Text("数据库发生问题噜"))
 				return
 			}
 			err = 民政局.登记(gid, ntrID, targetID, ctx.CardOrNickName(ntrID), ctx.CardOrNickName(targetID))
 			if err != nil {
-				ctx.SendChain(message.Text("[qqwife]复婚登记失败力\n", err))
+				ctx.SendChain(message.Text("[qqwife]复婚登记失败噜\n", err))
 				return
 			}
 			favor, err = 民政局.更新好感度(uid, fiancee, -5)
@@ -705,7 +705,7 @@ func checkMatchmaker(ctx *zero.Ctx) bool {
 		return false
 	}
 	if gayOne == gayZero {
-		ctx.SendChain(message.Text("你这个媒人XP很怪耶，不能这样噢"))
+		ctx.SendChain(message.Text("你这个媒人XP很奇怪耶，不能这样噢"))
 		return false
 	}
 	// 判断是否需要重置
