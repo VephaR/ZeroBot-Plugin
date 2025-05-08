@@ -71,13 +71,13 @@ func init() {
 				return
 			}
 			if !ok {
-				ctx.SendChain(message.Text("舔狗，今天你已经送过礼物了。"))
+				ctx.SendChain(message.Text("舔狗，今天你已经送过礼物了"))
 				return
 			}
 			// 获取好感度
 			favor, err := 民政局.查好感度(uid, gay)
 			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:好感度库发生问题力\n", err))
+				ctx.SendChain(message.Text("[ERROR]:好感度库发生问题噜\n", err))
 				return
 			}
 			// 对接小熊饼干
@@ -104,12 +104,12 @@ func init() {
 			// 记录结果
 			err = wallet.InsertWalletOf(uid, -moneyToFavor)
 			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:钱包坏掉力:\n", err))
+				ctx.SendChain(message.Text("[ERROR]:钱包坏掉噜:\n", err))
 				return
 			}
 			lastfavor, err := 民政局.更新好感度(uid, gay, newFavor)
 			if err != nil {
-				ctx.SendChain(message.Text("[ERROR]:好感度数据库发生问题力\n", err))
+				ctx.SendChain(message.Text("[ERROR]:好感度数据库发生问题噜\n", err))
 				return
 			}
 			// 写入CD
@@ -201,7 +201,7 @@ func init() {
 
 	engine.OnFullMatch("好感度数据整理", zero.SuperUserPermission, getdb).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
-			ctx.SendChain(message.Text("开始整理力，请稍等"))
+			ctx.SendChain(message.Text("开始整理噜，请稍等"))
 			民政局.Lock()
 			defer 民政局.Unlock()
 			count, err := 民政局.db.Count("favorability")
