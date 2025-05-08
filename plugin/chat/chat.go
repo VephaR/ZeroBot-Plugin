@@ -9,6 +9,7 @@ import (
 	ctrl "github.com/FloatTech/zbpctrl"
 	"github.com/FloatTech/zbputils/control"
 	zero "github.com/wdvxdr1123/ZeroBot"
+
 	// "github.com/wdvxdr1123/ZeroBot/extension/rate"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
@@ -46,9 +47,9 @@ func init() { // 插件主体
 		Handle(func(ctx *zero.Ctx) {
 			var nickname = zero.BotConfig.NickName[0]
 			ctx.SendChain(randText(
-				"请不要戳", nickname, " >_<",
-				"喂(#`O′) 戳", nickname, "干嘛！",
-				"戳坏了", nickname, "，你赔得起吗？",
+				"请不要戳"+nickname+" >_<",
+				"喂(#`O′) 戳"+nickname+"干嘛！",
+				"戳坏了"+nickname+"，你赔得起吗？",
 				"awa，好舒服呀(bushi)",
 				"嗯...不可以...啦...不要乱戳",
 				"喂，110吗，有人老戳我！",
@@ -63,7 +64,7 @@ func init() { // 插件主体
 				"别再戳我了喵...",
 				"放手啦，不给戳QAQ",
 				"涩批，你再戳咬你喵！",
-				"再戳", nickname, "，我要叫我主人了！",
+				"再戳"+nickname+"，我要叫我主人了！",
 				"欸很烦欸！你戳🔨呢你",
 				"啊呜，你有什么心事吗？",
 				"啊呜，太舒服刚刚竟然睡着了w有什么事喵？",
