@@ -223,7 +223,7 @@ func init() {
 			// } else {
 			// 	next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
 			// }
-			next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.RegexRule(`^-\S{1,}`), zero.CheckGroup(ctx.Event.GroupID))
+			next = zero.NewFutureEvent("message", 999, false, zero.OnlyGroup, zero.CheckGroup(ctx.Event.GroupID))
 			recv, cancel := next.Repeat()
 			defer cancel()
 			after := time.NewTimer(90 * time.Second)
