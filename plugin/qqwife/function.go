@@ -239,6 +239,8 @@ func init() {
 				case c := <-recv:
 					answer := strings.Replace(c.Event.Message.String(), "-", "", 1)
 					ctx.SendChain(message.Text("[answer]:", answer))
+					ctx.SendChain(message.Text("c.Event.Message.String:", c.Event.Message.String()))
+					ctx.SendChain(message.Text("c.Event.UserID:", c.Event.UserID))
 					switch {
 					case answer == "我愿意":
 						after.Stop()
