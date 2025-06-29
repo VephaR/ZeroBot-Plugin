@@ -14,7 +14,7 @@ import (
 
 	_ "github.com/FloatTech/ZeroBot-Plugin/console" // 更改控制台属性
 
-	"github.com/FloatTech/ZeroBot-Plugin/kanban" // 打印 banner
+	// "github.com/FloatTech/ZeroBot-Plugin/kanban" // 打印 banner
 
 	// ---------以下插件均可通过前面加 // 注释，注释后停用并不加载插件--------- //
 	// ----------------------插件优先级按顺序从高到低---------------------- //
