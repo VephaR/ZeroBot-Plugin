@@ -101,7 +101,7 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/github" // 搜索GitHub仓库
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/guessmusic"        // 猜歌
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/hitokoto"          // 一言
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/hs" // 炉石
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/hs" // 炉石
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/hyaku"             // 百人一首
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/inject" // 注入指令
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/jandan" // 煎蛋网无聊图
@@ -113,11 +113,11 @@ import (
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/magicprompt"       // magicprompt吟唱提示
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/mcfish"            // 钓鱼模拟器
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/midicreate"        // 简易midi音乐制作
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/minecraftobserver" // Minecraft服务器监控&订阅
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/movies"            // 电影插件
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/moyu"              // 摸鱼
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/moyucalendar"      // 摸鱼人日历
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/music"             // 点歌
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/minecraftobserver" // Minecraft服务器监控&订阅
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/movies" // 电影插件
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/moyu"              // 摸鱼
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/moyucalendar"      // 摸鱼人日历
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/music" // 点歌
 
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/nativesetu"        // 本地涩图
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/nbnhhsh"           // 拼音首字母缩写释义工具
@@ -127,8 +127,8 @@ import (
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/nsfw" // nsfw图片识别
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/nwife"             // 本地老婆
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/omikuji" // 浅草寺求签
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/poker"   // 抽扑克
-	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/qqwife"  // 一群一天一夫一妻制群老婆
+	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/poker"   // 抽扑克
+	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/qqwife" // 一群一天一夫一妻制群老婆
 
 	// _ "github.com/FloatTech/ZeroBot-Plugin/plugin/qzone"             // qq空间表白墙
 	_ "github.com/FloatTech/ZeroBot-Plugin/plugin/realcugan" // realcugan清晰术
