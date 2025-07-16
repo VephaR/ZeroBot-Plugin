@@ -46,10 +46,10 @@ var (
 		PrivateDataFolder: "score",
 	})
 	styles = []scoredrawer{
+		drawScore17b2,
 		drawScore15,
 		drawScore16,
 		drawScore17,
-		drawScore17b2,
 	}
 )
 
@@ -82,7 +82,7 @@ func init() {
 			// 个人用户设为负数
 			gid = -ctx.Event.UserID
 		}
-		k := uint8(3)
+		k := uint8(0)
 		if key == "" {
 			k = uint8(ctx.State["manager"].(*ctrl.Control[*zero.Ctx]).GetData(gid))
 		} else {
