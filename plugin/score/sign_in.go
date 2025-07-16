@@ -82,7 +82,7 @@ func init() {
 			// 个人用户设为负数
 			gid = -ctx.Event.UserID
 		}
-		k := uint8(0)
+		k := uint8(3)
 		if key == "" {
 			k = uint8(ctx.State["manager"].(*ctrl.Control[*zero.Ctx]).GetData(gid))
 		} else {
