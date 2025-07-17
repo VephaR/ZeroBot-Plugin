@@ -399,7 +399,7 @@ func init() { // 插件主体
 				}
 			}
 			if !flag {
-				// ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("不加好友不给赞!"))
+				ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("不加好友不给赞!"))
 				return
 			}
 			ctx.SendLike(ctx.Event.UserID, 10)
@@ -447,7 +447,7 @@ func init() { // 插件主体
 				if err == nil {
 					ctx.SendGroupMessage(ctx.Event.GroupID, message.ParseMessageFromString(welcometocq(ctx, w.Msg)))
 				} else {
-					ctx.SendChain(message.Text("欢迎~"))
+					ctx.SendChain(message.Text("欢迎欢迎喵~"))
 				}
 				c, ok := ctx.State["manager"].(*ctrl.Control[*zero.Ctx])
 				if ok {
@@ -500,7 +500,7 @@ func init() { // 插件主体
 					collectsend(ctx, message.ParseMessageFromString(welcometocq(ctx, w.Msg))...)
 				} else {
 					userid := ctx.Event.UserID
-					collectsend(ctx, message.Text(ctx.CardOrNickName(userid), "(", userid, ")", "离开了我们..."))
+					collectsend(ctx, message.Text(ctx.CardOrNickName(userid), "(", userid, ")", "退群了喵..."))
 				}
 			}
 		})
@@ -528,7 +528,7 @@ func init() { // 插件主体
 			if err == nil {
 				ctx.SendGroupMessage(ctx.Event.GroupID, message.ParseMessageFromString(welcometocq(ctx, w.Msg)))
 			} else {
-				ctx.SendChain(message.Text("欢迎~"))
+				ctx.SendChain(message.Text("欢迎欢迎喵~"))
 			}
 		})
 	// 设置告别辞
@@ -556,7 +556,7 @@ func init() { // 插件主体
 				ctx.SendGroupMessage(ctx.Event.GroupID, message.ParseMessageFromString(welcometocq(ctx, w.Msg)))
 			} else {
 				userid := ctx.Event.UserID
-				ctx.SendChain(message.Text(ctx.CardOrNickName(userid), "(", userid, ")", "离开了我们..."))
+				ctx.SendChain(message.Text(ctx.CardOrNickName(userid), "(", userid, ")", "退群了喵..."))
 			}
 		})
 	// 入群后验证开关
