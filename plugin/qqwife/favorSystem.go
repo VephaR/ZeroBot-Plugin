@@ -30,10 +30,6 @@ type favorability struct {
 	Favor    int    // 好感度
 }
 
-func randText(text ...string) message.Segment {
-	return message.Text(text[rand.Intn(len(text))])
-}
-
 func init() {
 	// 好感度系统
 	engine.OnMessage(zero.NewPattern(nil).Text(`^查好感度`).At().AsRule(), zero.OnlyGroup, getdb).SetBlock(true).Limit(ctxext.LimitByUser).
@@ -121,7 +117,7 @@ func init() {
 			if err != nil {
 				ctx.SendChain(message.At(uid), message.Text("[ERROR]:你的技能CD记录失败\n", err))
 			}
-			gift := randText(
+			gift := []string{
 				"一套女仆装",
 				"一件水手服",
 				"一条短裙",
@@ -168,12 +164,12 @@ func init() {
 				"一只哈基米",
 				"一只哈基汪",
 				"一只小兔叽",
-			)
+			}
 			// 输出结果
 			if mood == 0 {
-				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift, "送给了ta，ta很不喜欢，你们的好感度降低至", lastfavor))
+				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift[rand.Intn(len(gift))], "送给了ta，ta很不喜欢，你们的好感度降低至", lastfavor))
 			} else {
-				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift, "送给了ta，ta很喜欢，你们的好感度升至", lastfavor))
+				ctx.SendChain(message.Text("你花了", moneyToFavor, wallet.GetWalletName(), "买了", gift[rand.Intn(len(gift))], "送给了ta，ta很喜欢，你们的好感度升至", lastfavor))
 			}
 		})
 	engine.OnFullMatch("好感度列表", zero.OnlyGroup, getdb).SetBlock(true).Limit(ctxext.LimitByUser).
