@@ -410,7 +410,7 @@ func init() { // 插件主体
 	engine.OnFullMatch("群签到", zero.OnlyGroup).SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
 			ctx.SetGroupSign(ctx.Event.GroupID)
-			ctx.SendChain(message.Text("群签到成功，可在手机端输入框中的打卡查看"))
+			// ctx.SendChain(message.Text("群签到成功，可在手机端输入框中的打卡查看"))
 		})
 	facere := regexp.MustCompile(`\[CQ:face,id=(\d+)\]`)
 	// 给消息回应表情
