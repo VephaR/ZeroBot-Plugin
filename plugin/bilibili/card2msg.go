@@ -5,6 +5,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"         // 修复 undefined: image
+	_ "image/jpeg"  // 注册JPG解码器
+	_ "image/png"   // 注册PNG解码器
+	"os"            // 修复 undefined: os
+	"strings"       // 修复 undefined: strings
 	"time"
 
 	bz "github.com/FloatTech/AnimeAPI/bilibili"
@@ -13,14 +18,164 @@ import (
 	"github.com/FloatTech/floatbox/web"
 	"github.com/FloatTech/gg"
 	"github.com/FloatTech/imgfactory"
+	"github.com/sirupsen/logrus" // 修复 undefined: log
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-// 移除原有 msgType 定义，新增渲染相关常量
+// 重命名logrus为log，保持原有代码调用习惯
+var log = logrus.WithField("module", "bilibili-card2msg")
+
+// 补全缺失的渲染常量（卡片渲染必需）
+const (
+	Padding        = 20.0        // 内边距
+	RenderWidth    = 800.0       // 卡片宽度
+	TitleFontSize  = 24.0        // 标题字体大小
+	SubTitleSize   = 18.0        // 副标题字体大小
+	ContentFontSize = 16.0       // 内容字体大小
+	SmallFontSize  = 14.0        // 小字体大小
+	LineHeight     = 1.5         // 行高倍数
+	MaxContentLines = 15         // 内容最大行数（超出截断）
+	TitleColor     = "#2D3748"   // 标题颜色（深灰）
+	SubTitleColor  = "#4A5568"   // 副标题颜色（中灰）
+	ContentColor   = "#718096"   // 内容颜色（浅灰）
+	DataColor      = "#3182CE"   // 数据颜色（蓝色）
+	HighlightColor = "#E53E3E"   // 高亮颜色（红色）
+)
+
+// 移除原有 msgType 定义，新增渲染相关常量（已在底部恢复 msgType）
 const (
 	coverMaxHeight = 400.0 // 封面图最大高度
 	dataItemWidth  = 150.0 // 数据项宽度
 )
+
+// ------------------------------ 工具函数（补全缺失的依赖函数）------------------------------
+// colorHex 十六进制颜色转gg.Color
+func colorHex(hex string) gg.Color {
+	c, err := gg.ParseHexColor(hex)
+	if err != nil {
+		log.Warnln("解析颜色失败:", err)
+		return gg.Color{0.5, 0.5, 0.5, 1.0} // 默认灰色
+	}
+	return c
+}
+
+// NewRenderContext 初始化渲染画布
+func NewRenderContext(minHeight float64) *gg.Context {
+	ctx := gg.NewContext(int(RenderWidth), int(minHeight))
+	ctx.SetRGB(1, 1, 1) // 白色背景
+	ctx.Clear()
+	return ctx
+}
+
+// LoadFont 加载字体（使用默认字体，避免依赖外部文件）
+func LoadFont(ctx *gg.Context, size float64, bold bool) error {
+	// 优先使用系统默认字体，无则用gg内置字体
+	if bold {
+		return ctx.LoadFontFace("Arial Bold", size)
+	}
+	return ctx.LoadFontFace("Arial", size)
+}
+
+// WrapText 文本换行处理
+func WrapText(ctx *gg.Context, text string, maxWidth float64) []string {
+	var lines []string
+	words := strings.FieldsFunc(text, func(r rune) bool {
+		return r == ' ' || r == '\n'
+	})
+	currentLine := ""
+
+	for _, word := range words {
+		testLine := currentLine
+		if testLine == "" {
+			testLine = word
+		} else {
+			testLine += " " + word
+		}
+		width, _ := ctx.MeasureString(testLine)
+		if width <= maxWidth {
+			currentLine = testLine
+		} else {
+			lines = append(lines, currentLine)
+			currentLine = word
+		}
+	}
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+	return lines
+}
+
+// TruncateText 文本截断（超出最大行数加省略号）
+func TruncateText(lines []string, maxLines int) []string {
+	if len(lines) <= maxLines {
+		return lines
+	}
+	return append(lines[:maxLines-1], "......")
+}
+
+// DrawImageWithLimit 绘制限制尺寸的图片
+func DrawImageWithLimit(ctx *gg.Context, url string, maxWidth, maxHeight float64) (image.Image, error) {
+	// 下载图片
+	data, err := web.GetData(url)
+	if err != nil {
+		return nil, fmt.Errorf("下载图片失败: %w", err)
+	}
+	// 解码图片
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("解码图片失败: %w", err)
+	}
+	// 计算缩放比例
+	bounds := img.Bounds()
+	width := float64(bounds.Max.X - bounds.Min.X)
+	height := float64(bounds.Max.Y - bounds.Min.Y)
+	scale := 1.0
+	if width > maxWidth {
+		scale = maxWidth / width
+	}
+	if height*scale > maxHeight {
+		scale = maxHeight / height
+	}
+	// 缩放图片
+	newWidth := int(width * scale)
+	newHeight := int(height * scale)
+	ctx.DrawImageScaled(img, 0, 0, newWidth, newHeight)
+	return img, nil
+}
+
+// DrawMultiImages 绘制多张图片（自动换行）
+func DrawMultiImages(ctx *gg.Context, urls []string, x, y, maxImgHeight float64) (float64, error) {
+	currentX := x
+	gap := 10.0 // 图片间距
+	lineMaxY := y
+
+	for _, url := range urls {
+		img, err := DrawImageWithLimit(ctx, url, (RenderWidth-2*x-gap)/3, maxImgHeight)
+		if err != nil {
+			log.Warnln("绘制图片失败:", url, err)
+			continue
+		}
+		imgBounds := img.Bounds()
+		imgWidth := float64(imgBounds.Max.X - imgBounds.Min.X)
+		imgHeight := float64(imgBounds.Max.Y - imgBounds.Min.Y)
+
+		// 换行判断
+		if currentX+imgWidth > RenderWidth-x {
+			currentX = x
+			y = lineMaxY + gap
+			lineMaxY = y + imgHeight
+		} else {
+			if y+imgHeight > lineMaxY {
+				lineMaxY = y + imgHeight
+			}
+		}
+
+		ctx.DrawImage(img, int(currentX), int(y))
+		currentX += imgWidth + gap
+	}
+
+	return lineMaxY + gap, nil
+}
 
 // ------------------------------ 视频信息+总结渲染 ------------------------------
 func RenderVideoCard(card bz.Card, summaryMsg []message.Segment) (imgData []byte, err error) {
@@ -134,7 +289,8 @@ func RenderVideoCard(card bz.Card, summaryMsg []message.Segment) (imgData []byte
 		summaryText := ""
 		for _, seg := range summaryMsg {
 			if seg.Type == "text" {
-				summaryText += seg.Data["text"].(string)
+				// 修复：seg.Data["text"] 已是string，无需类型断言
+				summaryText += seg.Data["text"]
 			}
 		}
 		// 拆分总结内容（概述+大纲）
@@ -196,7 +352,7 @@ func RenderVideoCard(card bz.Card, summaryMsg []message.Segment) (imgData []byte
 	// 调整画布高度
 	ctx.Scale(1, 1)
 	finalImg := ctx.Image().(*image.RGBA)
-	finalImg = finalImg.SubImage(image.Rect(0, 0, RenderWidth, int(currentY))).(*image.RGBA)
+	finalImg = finalImg.SubImage(image.Rect(0, 0, int(RenderWidth), int(currentY))).(*image.RGBA)
 
 	// 转成字节流
 	var buf bytes.Buffer
@@ -357,7 +513,7 @@ func RenderDynamicCard(dynamicCard *bz.DynamicCard) (imgData []byte, err error) 
 
 	// 调整画布高度
 	finalImg := ctx.Image().(*image.RGBA)
-	finalImg = finalImg.SubImage(image.Rect(0, 0, RenderWidth, int(currentY))).(*image.RGBA)
+	finalImg = finalImg.SubImage(image.Rect(0, 0, int(RenderWidth), int(currentY))).(*image.RGBA)
 
 	// 转字节流
 	var buf bytes.Buffer
@@ -451,7 +607,7 @@ func RenderArticleCard(card bz.Card, cvID string) (imgData []byte, err error) {
 
 	// 调整画布高度
 	finalImg := ctx.Image().(*image.RGBA)
-	finalImg = finalImg.SubImage(image.Rect(0, 0, RenderWidth, int(currentY))).(*image.RGBA)
+	finalImg = finalImg.SubImage(image.Rect(0, 0, int(RenderWidth), int(currentY))).(*image.RGBA)
 
 	// 转字节流
 	var buf bytes.Buffer
@@ -539,7 +695,7 @@ func RenderLiveCard(card bz.RoomCard) (imgData []byte, err error) {
 
 	// 调整画布高度
 	finalImg := ctx.Image().(*image.RGBA)
-	finalImg = finalImg.SubImage(image.Rect(0, 0, RenderWidth, int(currentY))).(*image.RGBA)
+	finalImg = finalImg.SubImage(image.Rect(0, 0, int(RenderWidth), int(currentY))).(*image.RGBA)
 
 	// 转字节流
 	var buf bytes.Buffer
