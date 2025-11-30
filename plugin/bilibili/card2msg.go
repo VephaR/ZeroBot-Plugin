@@ -16,6 +16,7 @@ import (
 	"github.com/FloatTech/floatbox/binary"
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/imgfactory"
+	"github.com/sirupsen/logrus" // 补全 logrus 导入！
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
