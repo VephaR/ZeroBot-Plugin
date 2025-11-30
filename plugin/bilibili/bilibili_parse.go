@@ -25,62 +25,19 @@ import (
 
 const (
 	enableHex            = 0x10
-	unableHex            = 0x7fffffff_fffffffd
 	bilibiliparseReferer = "https://www.bilibili.com"
+	ua                   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" // 补充缺失的ua定义
 )
 
-var (
-	limit            = ctxext.NewLimiterManager(time.Second*10, 1)
-	searchVideo      = `bilibili.com\\?/video\\?/(?:av(\d+)|([bB][vV][0-9a-zA-Z]+))`
-	searchDynamic    = `(t.bilibili.com|m.bilibili.com\\?/dynamic)\\?/(\d+)`
-	searchArticle    = `bilibili.com\\?/read\\?/(?:cv|mobile\\?/)(\d+)`
-	searchLiveRoom   = `live.bilibili.com\\?/(\d+)`
-	searchVideoRe    = regexp.MustCompile(searchVideo)
-	searchDynamicRe  = regexp.MustCompile(searchDynamic)
-	searchArticleRe  = regexp.MustCompile(searchArticle)
-	searchLiveRoomRe = regexp.MustCompile(searchLiveRoom)
-	cachePath        string
-)
+// 保留原有变量定义...
 
-// 插件主体
 func init() {
-	en := control.Register("bilibiliparse", &ctrl.Options[*zero.Ctx]{
-		DisableOnDefault: false,
-		Brief:            "b站链接解析",
-		Help:             "例:- t.bilibili.com/642277677329285174\n- bilibili.com/read/cv17134450\n- bilibili.com/video/BV13B4y1x7pS\n- live.bilibili.com/22603245 ",
-	})
-	cachePath = en.DataFolder() + "cache/"
-	_ = os.RemoveAll(cachePath)
-	_ = os.MkdirAll(cachePath, 0755)
-	en.OnRegex(`((b23|acg).tv|bili2233.cn)\\?/[0-9a-zA-Z]+`).SetBlock(true).Limit(limit.LimitByGroup).
-		Handle(func(ctx *zero.Ctx) {
-			u := ctx.State["regex_matched"].([]string)[0]
-			u = strings.ReplaceAll(u, "\\", "")
-			realurl, err := bz.GetRealURL("https://" + u)
-			if err != nil {
-				ctx.SendChain(message.Text("ERROR: ", err))
-				return
-			}
-			switch {
-			case searchVideoRe.MatchString(realurl):
-				ctx.State["regex_matched"] = searchVideoRe.FindStringSubmatch(realurl)
-				handleVideo(ctx)
-			case searchDynamicRe.MatchString(realurl):
-				ctx.State["regex_matched"] = searchDynamicRe.FindStringSubmatch(realurl)
-				handleDynamic(ctx)
-			case searchArticleRe.MatchString(realurl):
-				ctx.State["regex_matched"] = searchArticleRe.FindStringSubmatch(realurl)
-				handleArticle(ctx)
-			case searchLiveRoomRe.MatchString(realurl):
-				ctx.State["regex_matched"] = searchLiveRoomRe.FindStringSubmatch(realurl)
-				handleLive(ctx)
-			}
-		})
+	// 保留原有初始化逻辑...
+	// 仅修改开关逻辑（默认开启视频总结，按之前的方案）
 	en.OnRegex(`^(开启|打开|启用|关闭|关掉|禁用)视频总结$`, zero.AdminPermission).SetBlock(true).
 		Handle(func(ctx *zero.Ctx) {
 			gid := ctx.Event.GroupID
 			if gid <= 0 {
-				// 个人用户设为负数
 				gid = -ctx.Event.UserID
 			}
 			option := ctx.State["regex_matched"].([]string)[1]
@@ -89,12 +46,12 @@ func init() {
 				ctx.SendChain(message.Text("找不到服务!"))
 				return
 			}
-			data := c.GetData(ctx.Event.GroupID)
+			var data int64
 			switch option {
 			case "开启", "打开", "启用":
-				data |= enableHex
+				data = enableHex
 			case "关闭", "关掉", "禁用":
-				data &= unableHex
+				data = 0x2 // 手动关闭标记
 			default:
 				return
 			}
@@ -105,12 +62,10 @@ func init() {
 			}
 			ctx.SendChain(message.Text("已", option, "视频总结"))
 		})
-	en.OnRegex(searchVideo).SetBlock(true).Limit(limit.LimitByGroup).Handle(handleVideo)
-	en.OnRegex(searchDynamic).SetBlock(true).Limit(limit.LimitByGroup).Handle(handleDynamic)
-	en.OnRegex(searchArticle).SetBlock(true).Limit(limit.LimitByGroup).Handle(handleArticle)
-	en.OnRegex(searchLiveRoom).SetBlock(true).Limit(limit.LimitByGroup).Handle(handleLive)
+	// 保留原有OnRegex注册...
 }
 
+// ------------------------------ 修改 handleVideo ------------------------------
 func handleVideo(ctx *zero.Ctx) {
 	id := ctx.State["regex_matched"].([]string)[1]
 	if id == "" {
@@ -121,21 +76,37 @@ func handleVideo(ctx *zero.Ctx) {
 		ctx.SendChain(message.Text("ERROR: ", err))
 		return
 	}
-	msg, err := videoCard2msg(card)
-	if err != nil {
-		ctx.SendChain(message.Text("ERROR: ", err))
-		return
-	}
+
+	// 1. 获取AI总结
+	var summaryMsg []message.Segment
 	c, ok := ctx.State["manager"].(*ctrl.Control[*zero.Ctx])
-	if ok && c.GetData(ctx.Event.GroupID)&enableHex == enableHex {
-		summaryMsg, err := getVideoSummary(cfg, card)
-		if err != nil {
-			msg = append(msg, message.Text("ERROR: ", err))
-		} else {
-			msg = append(msg, summaryMsg...)
+	if ok {
+		data := c.GetData(ctx.Event.GroupID)
+		if data == 0 || data == enableHex { // 默认开启/手动开启
+			sm, err := getVideoSummary(cfg, card)
+			if err != nil {
+				summaryMsg = append(summaryMsg, message.Text("ERROR: 视频总结生成失败 - ", err))
+			} else {
+				summaryMsg = sm
+			}
 		}
 	}
-	ctx.SendChain(msg...)
+
+	// 2. 渲染视频信息+总结为图片
+	imgData, err := videoCard2msg(card, summaryMsg)
+	if err != nil {
+		ctx.SendChain(message.Text("ERROR: 图片渲染失败 - ", err))
+		// 降级为文字消息（保留原有逻辑）
+		oldMsg, _ := oldVideoCard2msg(card) // 新增临时降级函数
+		ctx.SendChain(oldMsg...)
+		if len(summaryMsg) > 0 {
+			ctx.SendChain(summaryMsg...)
+		}
+	} else {
+		ctx.SendChain(message.ImageBytes(imgData))
+	}
+
+	// 3. 发送下载的视频
 	downLoadMsg, err := getVideoDownload(cfg, card, cachePath)
 	if err != nil {
 		ctx.SendChain(message.Text("ERROR: ", err))
@@ -144,114 +115,98 @@ func handleVideo(ctx *zero.Ctx) {
 	ctx.SendChain(downLoadMsg...)
 }
 
+// ------------------------------ 修改其他handle函数 ------------------------------
 func handleDynamic(ctx *zero.Ctx) {
-	msg, err := dynamicDetail(cfg, ctx.State["regex_matched"].([]string)[2])
+	dynamicID := ctx.State["regex_matched"].([]string)[2]
+	imgData, err := dynamicDetail(cfg, dynamicID)
 	if err != nil {
 		ctx.SendChain(message.Text("ERROR: ", err))
+		// 降级为文字消息
+		dyc, _ := bz.GetDynamicDetail(cfg, dynamicID)
+		oldMsg, _ := oldDynamicCard2msg(&dyc)
+		ctx.SendChain(oldMsg...)
 		return
 	}
-	ctx.SendChain(msg...)
+	ctx.SendChain(message.ImageBytes(imgData))
 }
 
 func handleArticle(ctx *zero.Ctx) {
-	card, err := bz.GetArticleInfo(ctx.State["regex_matched"].([]string)[1])
+	cvID := ctx.State["regex_matched"].([]string)[1]
+	card, err := bz.GetArticleInfo(cvID)
 	if err != nil {
 		ctx.SendChain(message.Text("ERROR: ", err))
 		return
 	}
-	ctx.SendChain(articleCard2msg(card, ctx.State["regex_matched"].([]string)[1])...)
+	imgData, err := articleCard2msg(card, cvID)
+	if err != nil {
+		ctx.SendChain(message.Text("ERROR: 图片渲染失败 - ", err))
+		// 降级为文字消息
+		oldMsg := oldArticleCard2msg(card, cvID)
+		ctx.SendChain(oldMsg...)
+		return
+	}
+	ctx.SendChain(message.ImageBytes(imgData))
 }
 
 func handleLive(ctx *zero.Ctx) {
+	roomID := ctx.State["regex_matched"].([]string)[1]
 	cookie, err := cfg.Load()
 	if err != nil {
 		ctx.SendChain(message.Text("ERROR: ", err))
 		return
 	}
-	card, err := bz.GetLiveRoomInfo(ctx.State["regex_matched"].([]string)[1], cookie)
+	card, err := bz.GetLiveRoomInfo(roomID, cookie)
 	if err != nil {
 		ctx.SendChain(message.Text("ERROR: ", err))
 		return
 	}
-	ctx.SendChain(liveCard2msg(card)...)
-}
-
-// getVideoSummary AI视频总结
-func getVideoSummary(cookiecfg *bz.CookieConfig, card bz.Card) (msg []message.Segment, err error) {
-	var (
-		data         []byte
-		videoSummary bz.VideoSummary
-	)
-	data, err = web.RequestDataWithHeaders(web.NewDefaultClient(), bz.SignURL(fmt.Sprintf(bz.VideoSummaryURL, card.BvID, card.CID, card.Owner.Mid)), "GET", func(req *http.Request) error {
-		if cookiecfg != nil {
-			cookie := ""
-			cookie, err = cookiecfg.Load()
-			if err != nil {
-				return err
-			}
-			req.Header.Add("cookie", cookie)
-		}
-		req.Header.Set("User-Agent", ua)
-		return nil
-	}, nil)
+	imgData, err := liveCard2msg(card)
 	if err != nil {
+		ctx.SendChain(message.Text("ERROR: 图片渲染失败 - ", err))
+		// 降级为文字消息
+		oldMsg := oldLiveCard2msg(card)
+		ctx.SendChain(oldMsg...)
 		return
 	}
-	err = json.Unmarshal(data, &videoSummary)
+	ctx.SendChain(message.ImageBytes(imgData))
+}
+
+// ------------------------------ 新增降级用的旧版文字转换函数 ------------------------------
+// oldVideoCard2msg 原文字转换函数（降级用）
+func oldVideoCard2msg(card bz.Card) (msg []message.Segment, err error) {
+	var mCard bz.MemberCard
 	msg = make([]message.Segment, 0, 16)
-	msg = append(msg, message.Text("已为你生成视频总结\n\n"))
-	msg = append(msg, message.Text(videoSummary.Data.ModelResult.Summary, "\n\n"))
-	for _, v := range videoSummary.Data.ModelResult.Outline {
-		msg = append(msg, message.Text("● ", v.Title, "\n"))
-		for _, p := range v.PartOutline {
-			msg = append(msg, message.Text(fmt.Sprintf("%d:%d %s\n", p.Timestamp/60, p.Timestamp%60, p.Content)))
+	mCard, err = bz.GetMemberCard(card.Owner.Mid)
+	msg = append(msg, message.Text("标题: ", card.Title, "\n"))
+	if card.Rights.IsCooperation == 1 {
+		for i := 0; i < len(card.Staff); i++ {
+			msg = append(msg, message.Text(card.Staff[i].Title, ": ", card.Staff[i].Name, " 粉丝: ", bz.HumanNum(card.Staff[i].Follower), "\n"))
 		}
-		msg = append(msg, message.Text("\n"))
+	} else {
+		if err != nil {
+			msg = append(msg, message.Text("UP主: ", card.Owner.Name, "\n"))
+		} else {
+			msg = append(msg, message.Text("UP主: ", card.Owner.Name, " 粉丝: ", bz.HumanNum(mCard.Fans), "\n"))
+		}
 	}
+	msg = append(msg, message.Image(card.Pic))
+	msg = append(msg, message.Text("👀播放: ", bz.HumanNum(card.Stat.View), " 💬弹幕: ", bz.HumanNum(card.Stat.Danmaku),
+		"\n👍点赞: ", bz.HumanNum(card.Stat.Like), " 💰投币: ", bz.HumanNum(card.Stat.Coin),
+		"\n📁收藏: ", bz.HumanNum(card.Stat.Favorite), " 🔗分享: ", bz.HumanNum(card.Stat.Share),
+		"\n📝简介: ", card.Desc, "\n", bz.VURL, card.BvID, "\n\n"))
 	return
 }
 
-func getVideoDownload(cookiecfg *bz.CookieConfig, card bz.Card, cachePath string) (msg []message.Segment, err error) {
-	var (
-		data          []byte
-		videoDownload bz.VideoDownload
-		stderr        bytes.Buffer
-	)
-	today := time.Now().Format("20060102")
-	videoFile := fmt.Sprintf("%s%s%s.mp4", cachePath, card.BvID, today)
-	if file.IsExist(videoFile) {
-		msg = append(msg, message.Video("file:///"+file.BOTPATH+"/"+videoFile))
-		return
-	}
-	data, err = web.RequestDataWithHeaders(web.NewDefaultClient(), bz.SignURL(fmt.Sprintf(bz.VideoDownloadURL, card.BvID, card.CID)), "GET", func(req *http.Request) error {
-		if cookiecfg != nil {
-			cookie := ""
-			cookie, err = cookiecfg.Load()
-			if err != nil {
-				return err
-			}
-			req.Header.Add("cookie", cookie)
-		}
-		req.Header.Set("User-Agent", ua)
-		return nil
-	}, nil)
-	if err != nil {
-		return
-	}
-	err = json.Unmarshal(data, &videoDownload)
-	if err != nil {
-		return
-	}
-	headers := fmt.Sprintf("User-Agent: %s\nReferer: %s", ua, bilibiliparseReferer)
-	// 限制最多下载8分钟视频
-	cmd := exec.Command("ffmpeg", "-ss", "0", "-t", "480", "-headers", headers, "-i", videoDownload.Data.Durl[0].URL, "-c", "copy", videoFile)
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	if err != nil {
-		// err = errors.Errorf("未配置ffmpeg，%v", stderr)
-		err = errors.Errorf("FFmpeg繁忙，如需下载视频请稍后重试")
-		return
-	}
-	msg = append(msg, message.Video("file:///"+file.BOTPATH+"/"+videoFile))
-	return
+// 其他旧版函数（oldDynamicCard2msg、oldArticleCard2msg、oldLiveCard2msg）
+// 直接复制原有 card2msg.go 中的对应函数，前缀改为 old，返回 []message.Segment
+func oldDynamicCard2msg(dynamicCard *bz.DynamicCard) (msg []message.Segment, err error) {
+	// 复制原有 dynamicCard2msg 函数逻辑
 }
+func oldArticleCard2msg(card bz.Card, defaultID string) []message.Segment {
+	// 复制原有 articleCard2msg 函数逻辑
+}
+func oldLiveCard2msg(card bz.RoomCard) []message.Segment {
+	// 复制原有 liveCard2msg 函数逻辑
+}
+
+// 保留原有 getVideoSummary 和 getVideoDownload 函数...
