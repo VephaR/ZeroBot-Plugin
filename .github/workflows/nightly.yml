@@ -10,21 +10,9 @@ env:
 
 jobs:
   build:
-    name: Build binary CI
+    name: Build Linux amd64 Binary
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # build and publish in parallel: linux/386, linux/amd64, windows/386, windows/amd64, darwin/amd64, darwin/arm64
-        goos: [linux, windows]
-        goarch: ["386", amd64, arm, arm64]
-        exclude:
-          - goos: windows
-            goarch: arm
-          - goos: windows
-            goarch: arm64
-          - goos: windows
-            goarch: 386
-      fail-fast: true
+    # 移除多架构矩阵，直接指定目标系统和架构
     steps:
       - uses: actions/checkout@master
       - name: Setup Go environment
@@ -38,21 +26,30 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ matrix.goos }}-${{ matrix.goarch }}-${{ hashFiles('**/go.sum') }}
+          # 缓存key简化（只对应linux_amd64）
+          key: ${{ runner.os }}-go-linux-amd64-${{ hashFiles('**/go.sum') }}
       - name: Build binary file
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+          # 直接硬编码目标架构，无需matrix
+          GOOS: linux
+          GOARCH: amd64
           IS_PR: ${{ !!github.head_ref }}
         run: |
-          if [ $GOOS = "windows" ]; then export BINARY_SUFFIX="$BINARY_SUFFIX.exe"; fi
-          if $IS_PR ; then echo $PR_PROMPT; fi
-          export BINARY_NAME="$BINARY_PREFIX$GOOS_$GOARCH$BINARY_SUFFIX"
+          # 1. 设置Go代理，加速依赖下载
+          export GOPROXY=https://goproxy.cn,direct
+          # 2. 同步依赖（自动更新go.mod/go.sum，解决依赖缺失）
+          go mod tidy
+          # 3. 确保输出目录存在，避免编译失败
+          mkdir -p output
+          # 4. 无需判断系统（固定linux），直接拼接文件名
+          export BINARY_NAME="${BINARY_PREFIX}${GOOS}_${GOARCH}${BINARY_SUFFIX}"
           export CGO_ENABLED=0
-          go build -o "output/$BINARY_NAME" -trimpath -ldflags "$LD_FLAGS" .
+          # 5. 编译（添加-v参数，输出详细日志便于调试）
+          go build -v -o "output/$BINARY_NAME" -trimpath -ldflags "$LD_FLAGS" .
       - name: Upload artifact
         uses: actions/upload-artifact@master
         if: ${{ !github.head_ref }}
         with:
-          name: ${{ matrix.goos }}_${{ matrix.goarch }}
+          # 产物名称简化（直接对应linux_amd64）
+          name: linux_amd64
           path: output/
