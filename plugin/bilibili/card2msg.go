@@ -15,28 +15,12 @@ import (
 	bz "github.com/FloatTech/AnimeAPI/bilibili"
 	"github.com/FloatTech/floatbox/binary"
 	"github.com/FloatTech/floatbox/file"
-	"github.com/FloatTech/floatbox/web"
-	"github.com/FloatTech/gg"
 	"github.com/FloatTech/imgfactory"
-	"github.com/sirupsen/logrus"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-// 日志实例（复用包内日志）
-var log = logrus.WithField("module", "bilibili-card2msg")
-
-// 补全缓存路径（与之前逻辑一致）
-var cachePath = "./data/bilibili/cache/"
-
-// 初始化缓存目录
-func init() {
-	if !file.IsExist(cachePath) {
-		err := os.MkdirAll(cachePath, 0755)
-		if err != nil {
-			log.Errorln("创建缓存目录失败:", err)
-		}
-	}
-}
+// 日志实例重命名，避免与包内其他 log 冲突
+var cardLog = logrus.WithField("module", "bilibili-card2msg")
 
 // 渲染相关常量（仅保留本文件独有的，其余复用 render_utils.go）
 const (
@@ -46,7 +30,7 @@ const (
 
 // ------------------------------ 视频信息+总结渲染 ------------------------------
 func RenderVideoCard(card bz.Card, summaryMsg []message.Segment) (imgData []byte, err error) {
-	// 缓存文件名：BV号+日期
+	// 复用包内全局 cachePath（来自 bilibili_parse.go），不重复声明
 	cacheKey := fmt.Sprintf("video_%s_%s.png", card.BvID, time.Now().Format("20060102"))
 	cacheFile := cachePath + cacheKey
 	if file.IsExist(cacheFile) {
@@ -58,10 +42,17 @@ func RenderVideoCard(card bz.Card, summaryMsg []message.Segment) (imgData []byte
 	ctx := NewRenderContext(minHeight)
 	defer func() {
 		if err == nil {
-			// 保存缓存
-			f, _ := os.Create(cacheFile)
+			// 保存缓存：补全 imgfactory.WriteTo 的返回值（n, err）
+			f, createErr := os.Create(cacheFile)
+			if createErr != nil {
+				cardLog.Errorln("创建缓存文件失败:", createErr)
+				return
+			}
 			defer f.Close()
-			imgfactory.WriteTo(ctx.Image(), f)
+			_, writeErr := imgfactory.WriteTo(ctx.Image(), f)
+			if writeErr != nil {
+				cardLog.Errorln("写入缓存文件失败:", writeErr)
+			}
 		}
 	}()
 
@@ -221,17 +212,18 @@ func RenderVideoCard(card bz.Card, summaryMsg []message.Segment) (imgData []byte
 	finalImg := ctx.Image().(*image.RGBA)
 	finalImg = finalImg.SubImage(image.Rect(0, 0, int(RenderWidth), int(currentY))).(*image.RGBA)
 
-	// 转成字节流
+	// 转成字节流：补全 imgfactory.WriteTo 的返回值
 	var buf bytes.Buffer
-	if err := imgfactory.WriteTo(finalImg, &buf); err != nil {
-		return nil, err
+	_, writeErr := imgfactory.WriteTo(finalImg, &buf)
+	if writeErr != nil {
+		return nil, writeErr
 	}
 	return buf.Bytes(), nil
 }
 
 // ------------------------------ 动态渲染 ------------------------------
 func RenderDynamicCard(dynamicCard *bz.DynamicCard) (imgData []byte, err error) {
-	// 缓存文件名：动态ID
+	// 复用包内全局 cachePath
 	cacheKey := fmt.Sprintf("dynamic_%s.png", dynamicCard.Desc.DynamicIDStr)
 	cacheFile := cachePath + cacheKey
 	if file.IsExist(cacheFile) {
@@ -258,9 +250,16 @@ func RenderDynamicCard(dynamicCard *bz.DynamicCard) (imgData []byte, err error) 
 	ctx := NewRenderContext(minHeight)
 	defer func() {
 		if err == nil {
-			f, _ := os.Create(cacheFile)
+			f, createErr := os.Create(cacheFile)
+			if createErr != nil {
+				cardLog.Errorln("创建缓存文件失败:", createErr)
+				return
+			}
 			defer f.Close()
-			imgfactory.WriteTo(ctx.Image(), f)
+			_, writeErr := imgfactory.WriteTo(ctx.Image(), f)
+			if writeErr != nil {
+				cardLog.Errorln("写入缓存文件失败:", writeErr)
+			}
 		}
 	}()
 
@@ -364,7 +363,7 @@ func RenderDynamicCard(dynamicCard *bz.DynamicCard) (imgData []byte, err error) 
 	if len(imgURLs) > 0 {
 		currentY, err = DrawMultiImages(ctx, imgURLs, Padding, currentY, 300)
 		if err != nil {
-			log.Warnln("[bilibili-render] 绘制动态图片失败:", err)
+			cardLog.Warnln("[bilibili-render] 绘制动态图片失败:", err)
 		}
 	}
 
@@ -382,16 +381,18 @@ func RenderDynamicCard(dynamicCard *bz.DynamicCard) (imgData []byte, err error) 
 	finalImg := ctx.Image().(*image.RGBA)
 	finalImg = finalImg.SubImage(image.Rect(0, 0, int(RenderWidth), int(currentY))).(*image.RGBA)
 
-	// 转字节流
+	// 转字节流：补全返回值
 	var buf bytes.Buffer
-	if err := imgfactory.WriteTo(finalImg, &buf); err != nil {
-		return nil, err
+	_, writeErr := imgfactory.WriteTo(finalImg, &buf)
+	if writeErr != nil {
+		return nil, writeErr
 	}
 	return buf.Bytes(), nil
 }
 
 // ------------------------------ 专栏渲染 ------------------------------
 func RenderArticleCard(card bz.Card, cvID string) (imgData []byte, err error) {
+	// 复用包内全局 cachePath
 	cacheKey := fmt.Sprintf("article_%s.png", cvID)
 	cacheFile := cachePath + cacheKey
 	if file.IsExist(cacheFile) {
@@ -402,9 +403,16 @@ func RenderArticleCard(card bz.Card, cvID string) (imgData []byte, err error) {
 	ctx := NewRenderContext(800)
 	defer func() {
 		if err == nil {
-			f, _ := os.Create(cacheFile)
+			f, createErr := os.Create(cacheFile)
+			if createErr != nil {
+				cardLog.Errorln("创建缓存文件失败:", createErr)
+				return
+			}
 			defer f.Close()
-			imgfactory.WriteTo(ctx.Image(), f)
+			_, writeErr := imgfactory.WriteTo(ctx.Image(), f)
+			if writeErr != nil {
+				cardLog.Errorln("写入缓存文件失败:", writeErr)
+			}
 		}
 	}()
 
@@ -458,7 +466,7 @@ func RenderArticleCard(card bz.Card, cvID string) (imgData []byte, err error) {
 	if len(card.OriginImageUrls) > 0 {
 		currentY, err = DrawMultiImages(ctx, card.OriginImageUrls, Padding, currentY, 350)
 		if err != nil {
-			log.Warnln("[bilibili-render] 绘制专栏图片失败:", err)
+			cardLog.Warnln("[bilibili-render] 绘制专栏图片失败:", err)
 		}
 	}
 
@@ -476,16 +484,18 @@ func RenderArticleCard(card bz.Card, cvID string) (imgData []byte, err error) {
 	finalImg := ctx.Image().(*image.RGBA)
 	finalImg = finalImg.SubImage(image.Rect(0, 0, int(RenderWidth), int(currentY))).(*image.RGBA)
 
-	// 转字节流
+	// 转字节流：补全返回值
 	var buf bytes.Buffer
-	if err := imgfactory.WriteTo(finalImg, &buf); err != nil {
-		return nil, err
+	_, writeErr := imgfactory.WriteTo(finalImg, &buf)
+	if writeErr != nil {
+		return nil, writeErr
 	}
 	return buf.Bytes(), nil
 }
 
 // ------------------------------ 直播间渲染 ------------------------------
 func RenderLiveCard(card bz.RoomCard) (imgData []byte, err error) {
+	// 复用包内全局 cachePath
 	cacheKey := fmt.Sprintf("live_%d.png", card.RoomInfo.RoomID)
 	cacheFile := cachePath + cacheKey
 	if file.IsExist(cacheFile) {
@@ -496,9 +506,16 @@ func RenderLiveCard(card bz.RoomCard) (imgData []byte, err error) {
 	ctx := NewRenderContext(800)
 	defer func() {
 		if err == nil {
-			f, _ := os.Create(cacheFile)
+			f, createErr := os.Create(cacheFile)
+			if createErr != nil {
+				cardLog.Errorln("创建缓存文件失败:", createErr)
+				return
+			}
 			defer f.Close()
-			imgfactory.WriteTo(ctx.Image(), f)
+			_, writeErr := imgfactory.WriteTo(ctx.Image(), f)
+			if writeErr != nil {
+				cardLog.Errorln("写入缓存文件失败:", writeErr)
+			}
 		}
 	}()
 
@@ -564,10 +581,11 @@ func RenderLiveCard(card bz.RoomCard) (imgData []byte, err error) {
 	finalImg := ctx.Image().(*image.RGBA)
 	finalImg = finalImg.SubImage(image.Rect(0, 0, int(RenderWidth), int(currentY))).(*image.RGBA)
 
-	// 转字节流
+	// 转字节流：补全返回值
 	var buf bytes.Buffer
-	if err := imgfactory.WriteTo(finalImg, &buf); err != nil {
-		return nil, err
+	_, writeErr := imgfactory.WriteTo(finalImg, &buf)
+	if writeErr != nil {
+		return nil, writeErr
 	}
 	return buf.Bytes(), nil
 }
