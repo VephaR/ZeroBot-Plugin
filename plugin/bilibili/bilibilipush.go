@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings" // 移到这里！所有import必须集中在文件开头
 	"time"
 
 	_ "github.com/go-sql-driver/mysql" // 示例数据库驱动，根据实际调整
@@ -17,11 +18,11 @@ var lastTime time.Time
 
 // 动态卡片结构体（根据实际需求调整字段）
 type DynamicCard struct {
-	ID        string
-	Content   string
-	ImageURLs []string
+	ID          string
+	Content     string
+	ImageURLs   []string
 	PublishedAt time.Time
-	LikeCount int64
+	LikeCount   int64
 }
 
 // 初始化数据库连接（程序启动时调用）
@@ -119,6 +120,3 @@ func PushUserDynamic(userID string) error {
 
 	return nil
 }
-
-// 注意：导入strings包（用于分割图片URL）
-import "strings"
