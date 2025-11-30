@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"strings"
 
-	"github.com/FloatTech/AnimeAPI/bilibili"
 	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
 	"github.com/FloatTech/gg"
@@ -18,8 +17,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// 日志实例（包内共用）
-var log = logrus.WithField("module", "bilibili-render-utils")
+// 日志实例重命名，避免与包内其他 log 冲突
+var renderLog = logrus.WithField("module", "bilibili-render-utils")
 
 // 全局渲染配置（统一风格，供 card2msg.go 复用）
 const (
@@ -52,12 +51,12 @@ func init() {
 	var err error
 	titleFont, err = file.GetLazyData(text.BoldFontFile, control.Md5File, true)
 	if err != nil {
-		log.Errorln("[bilibili-render] 加载标题字体失败:", err)
+		renderLog.Errorln("[bilibili-render] 加载标题字体失败:", err)
 		titleFont = []byte{}
 	}
 	contentFont, err = file.GetLazyData(text.FontFile, control.Md5File, true)
 	if err != nil {
-		log.Errorln("[bilibili-render] 加载内容字体失败:", err)
+		renderLog.Errorln("[bilibili-render] 加载内容字体失败:", err)
 		contentFont = []byte{}
 	}
 }
@@ -78,14 +77,15 @@ func NewRenderContext(minHeight float64) *gg.Context {
 	return ctx
 }
 
-// LoadFont 加载字体（自动降级）
+// LoadFont 加载字体（自动降级：移除 text.DefaultFontData，用空字节降级）
 func LoadFont(ctx *gg.Context, fontSize float64, isBold bool) error {
 	fontData := contentFont
 	if isBold && len(titleFont) > 0 {
 		fontData = titleFont
 	}
 	if len(fontData) == 0 {
-		return ctx.ParseFontFace(text.DefaultFontData, fontSize)
+		// 字体加载失败时，使用 gg 内置默认字体（空字节降级）
+		return ctx.LoadFontFace("", fontSize)
 	}
 	return ctx.ParseFontFace(fontData, fontSize)
 }
@@ -150,7 +150,7 @@ func DrawMultiImages(ctx *gg.Context, imgURLs []string, startX, startY, maxHeigh
 	for i := 0; i < imgCount; i++ {
 		img, err := DrawImageWithLimit(ctx, imgURLs[i], singleWidth, maxHeight)
 		if err != nil {
-			log.Warnln("[bilibili-render] 加载图片失败:", err)
+			renderLog.Warnln("[bilibili-render] 加载图片失败:", err)
 			continue
 		}
 		imgBounds := img.Bounds()
