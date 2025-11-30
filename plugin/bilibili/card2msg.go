@@ -1,342 +1,589 @@
+// Package bilibili
 package bilibili
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	bz "github.com/FloatTech/AnimeAPI/bilibili"
 	"github.com/FloatTech/floatbox/binary"
+	"github.com/FloatTech/floatbox/file"
 	"github.com/FloatTech/floatbox/web"
+	"github.com/FloatTech/gg"
+	"github.com/FloatTech/imgfactory"
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-var (
-	msgType = map[int]string{
-		1:    "转发了动态",
-		2:    "有图营业",
-		4:    "无图营业",
-		8:    "投稿了视频",
-		16:   "投稿了短视频",
-		64:   "投稿了文章",
-		256:  "投稿了音频",
-		2048: "发布了简报",
-		4200: "发布了直播",
-		4308: "发布了直播",
-	}
+// 移除原有 msgType 定义，新增渲染相关常量
+const (
+	coverMaxHeight = 400.0 // 封面图最大高度
+	dataItemWidth  = 150.0 // 数据项宽度
 )
 
-// dynamicCard2msg 处理DynCard
-func dynamicCard2msg(dynamicCard *bz.DynamicCard) (msg []message.Segment, err error) {
-	var (
-		card  bz.Card
-		vote  bz.Vote
-		cType int
-	)
-	msg = make([]message.Segment, 0, 16)
-	// 初始化结构体
-	err = json.Unmarshal(binary.StringToBytes(dynamicCard.Card), &card)
-	if err != nil {
-		return
+// ------------------------------ 视频信息+总结渲染 ------------------------------
+func RenderVideoCard(card bz.Card, summaryMsg []message.Segment) (imgData []byte, err error) {
+	// 缓存文件名：BV号+日期
+	cacheKey := fmt.Sprintf("video_%s_%s.png", card.BvID, time.Now().Format("20060102"))
+	cacheFile := cachePath + cacheKey
+	if file.IsExist(cacheFile) {
+		return os.ReadFile(cacheFile)
+	}
+
+	// 1. 初始化画布（预估最小高度）
+	minHeight := 800.0
+	ctx := NewRenderContext(minHeight)
+	defer func() {
+		if err == nil {
+			// 保存缓存
+			f, _ := os.Create(cacheFile)
+			defer f.Close()
+			imgfactory.WriteTo(ctx.Image(), f)
+		}
+	}()
+
+	// 2. 绘制标题
+	currentY := Padding
+	ctx.SetColor(colorHex(TitleColor))
+	if err := LoadFont(ctx, TitleFontSize, true); err != nil {
+		return nil, err
+	}
+	titleLines := WrapText(ctx, card.Title, RenderWidth-2*Padding)
+	for _, line := range titleLines {
+		lineWidth, _ := ctx.MeasureString(line)
+		ctx.DrawString(line, (RenderWidth-lineWidth)/2, currentY)
+		currentY += TitleFontSize * LineHeight
+	}
+	currentY += 20
+
+	// 3. 绘制封面图
+	coverImg, err := DrawImageWithLimit(ctx, card.Pic, RenderWidth-2*Padding, coverMaxHeight)
+	if err == nil {
+		coverBounds := coverImg.Bounds()
+		coverHeight := float64(coverBounds.Max.Y - coverBounds.Min.Y)
+		ctx.DrawImage(coverImg, int(Padding), int(currentY))
+		currentY += coverHeight + 30
+	}
+
+	// 4. 绘制UP主信息和数据统计
+	ctx.SetColor(colorHex(SubTitleColor))
+	if err := LoadFont(ctx, SubTitleSize, false); err != nil {
+		return nil, err
+	}
+	// UP主信息
+	upText := fmt.Sprintf("UP主：%s", card.Owner.Name)
+	if card.Rights.IsCooperation == 1 {
+		upText = "联合创作："
+		for i, staff := range card.Staff {
+			if i > 0 {
+				upText += " | "
+			}
+			upText += fmt.Sprintf("%s（%s）", staff.Name, staff.Title)
+		}
+	}
+	ctx.DrawString(upText, Padding, currentY)
+	currentY += SubTitleSize * LineHeight
+
+	// 数据统计（播放、点赞、投币等）
+	dataItems := []struct {
+		label string
+		value string
+	}{
+		{"播放", bz.HumanNum(card.Stat.View)},
+		{"弹幕", bz.HumanNum(card.Stat.Danmaku)},
+		{"点赞", bz.HumanNum(card.Stat.Like)},
+		{"投币", bz.HumanNum(card.Stat.Coin)},
+		{"收藏", bz.HumanNum(card.Stat.Favorite)},
+		{"分享", bz.HumanNum(card.Stat.Share)},
+	}
+	ctx.SetColor(colorHex(DataColor))
+	currentX := Padding
+	for _, item := range dataItems {
+		text := fmt.Sprintf("%s：%s", item.label, item.value)
+		ctx.DrawString(text, currentX, currentY)
+		currentX += dataItemWidth
+	}
+	currentY += SubTitleSize * LineHeight + 20
+
+	// 5. 绘制简介
+	ctx.SetColor(colorHex(ContentColor))
+	if err := LoadFont(ctx, ContentFontSize, false); err != nil {
+		return nil, err
+	}
+	ctx.DrawString("简介：", Padding, currentY)
+	currentY += ContentFontSize * LineHeight
+	introLines := WrapText(ctx, card.Desc, RenderWidth-2*Padding-20)
+	introLines = TruncateText(introLines, MaxContentLines)
+	for _, line := range introLines {
+		ctx.DrawString(line, Padding+20, currentY)
+		currentY += ContentFontSize * LineHeight
+	}
+	currentY += 30
+
+	// 6. 绘制AI总结（如果有）
+	if len(summaryMsg) > 0 {
+		ctx.SetColor(colorHex(HighlightColor))
+		if err := LoadFont(ctx, SubTitleSize, true); err != nil {
+			return nil, err
+		}
+		ctx.DrawString("视频总结：", Padding, currentY)
+		currentY += SubTitleSize * LineHeight
+
+		// 解析总结文本（从summaryMsg中提取）
+		summaryText := ""
+		for _, seg := range summaryMsg {
+			if seg.Type == "text" {
+				summaryText += seg.Data["text"].(string)
+			}
+		}
+		// 拆分总结内容（概述+大纲）
+		summaryParts := strings.Split(summaryText, "\n\n")
+		if len(summaryParts) > 0 {
+			// 绘制概述
+			ctx.SetColor(colorHex(ContentColor))
+			if err := LoadFont(ctx, ContentFontSize, false); err != nil {
+				return nil, err
+			}
+			overviewLines := WrapText(ctx, summaryParts[0], RenderWidth-2*Padding-20)
+			for _, line := range overviewLines {
+				ctx.DrawString(line, Padding+20, currentY)
+				currentY += ContentFontSize * LineHeight
+			}
+			currentY += 20
+
+			// 绘制大纲
+			ctx.SetColor(colorHex(HighlightColor))
+			if err := LoadFont(ctx, SubTitleSize, false); err != nil {
+				return nil, err
+			}
+			ctx.DrawString("关键大纲：", Padding+20, currentY)
+			currentY += SubTitleSize * LineHeight
+
+			for i := 1; i < len(summaryParts); i++ {
+				part := strings.TrimSpace(summaryParts[i])
+				if part == "" {
+					continue
+				}
+				// 匹配大纲项（● 标题 + 时间戳内容）
+				outlineLines := WrapText(ctx, part, RenderWidth-2*Padding-40)
+				for _, line := range outlineLines {
+					ctx.SetColor(colorHex(ContentColor))
+					if strings.HasPrefix(line, "●") {
+						ctx.SetColor(colorHex(HighlightColor))
+					} else if strings.Contains(line, ":") {
+						// 时间戳部分用数据色
+						ctx.SetColor(colorHex(DataColor))
+					}
+					ctx.DrawString(line, Padding+40, currentY)
+					currentY += ContentFontSize * LineHeight
+				}
+			}
+		}
+		currentY += 30
+	}
+
+	// 7. 绘制视频链接
+	ctx.SetColor(colorHex(HighlightColor))
+	if err := LoadFont(ctx, SmallFontSize, false); err != nil {
+		return nil, err
+	}
+	linkText := fmt.Sprintf("视频链接：%s%s", bz.VURL, card.BvID)
+	linkWidth, _ := ctx.MeasureString(linkText)
+	ctx.DrawString(linkText, (RenderWidth-linkWidth)/2, currentY)
+	currentY += SmallFontSize * LineHeight + Padding
+
+	// 调整画布高度
+	ctx.Scale(1, 1)
+	finalImg := ctx.Image().(*image.RGBA)
+	finalImg = finalImg.SubImage(image.Rect(0, 0, RenderWidth, int(currentY))).(*image.RGBA)
+
+	// 转成字节流
+	var buf bytes.Buffer
+	if err := imgfactory.WriteTo(finalImg, &buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// ------------------------------ 动态渲染 ------------------------------
+func RenderDynamicCard(dynamicCard *bz.DynamicCard) (imgData []byte, err error) {
+	// 缓存文件名：动态ID
+	cacheKey := fmt.Sprintf("dynamic_%s.png", dynamicCard.Desc.DynamicIDStr)
+	cacheFile := cachePath + cacheKey
+	if file.IsExist(cacheFile) {
+		return os.ReadFile(cacheFile)
+	}
+
+	// 1. 解析动态内容
+	var card bz.Card
+	var vote bz.Vote
+	if err := json.Unmarshal(binary.StringToBytes(dynamicCard.Card), &card); err != nil {
+		return nil, err
 	}
 	if dynamicCard.Extension.Vote != "" {
-		err = json.Unmarshal(binary.StringToBytes(dynamicCard.Extension.Vote), &vote)
-		if err != nil {
-			return
-		}
+		json.Unmarshal(binary.StringToBytes(dynamicCard.Extension.Vote), &vote)
 	}
-	cType = dynamicCard.Desc.Type
-	// 生成消息
+	cType := dynamicCard.Desc.Type
+	dynamicType := msgType[cType]
+	if dynamicType == "" {
+		dynamicType = fmt.Sprintf("未知类型（%d）", cType)
+	}
+
+	// 2. 初始化画布
+	minHeight := 600.0
+	ctx := NewRenderContext(minHeight)
+	defer func() {
+		if err == nil {
+			f, _ := os.Create(cacheFile)
+			defer f.Close()
+			imgfactory.WriteTo(ctx.Image(), f)
+		}
+	}()
+
+	currentY := Padding
+
+	// 3. 绘制标题栏（发布者+时间+动态类型）
+	ctx.SetColor(colorHex(TitleColor))
+	if err := LoadFont(ctx, TitleFontSize, true); err != nil {
+		return nil, err
+	}
+	publisher := card.User.Uname
+	if publisher == "" {
+		publisher = dynamicCard.Desc.UserProfile.Info.Uname
+	}
+	titleText := fmt.Sprintf("%s %s", publisher, dynamicType)
+	titleWidth, _ := ctx.MeasureString(titleText)
+	ctx.DrawString(titleText, (RenderWidth-titleWidth)/2, currentY)
+	currentY += TitleFontSize * LineHeight + 10
+
+	// 时间
+	ctx.SetColor(colorHex(SubTitleColor))
+	if err := LoadFont(ctx, SmallFontSize, false); err != nil {
+		return nil, err
+	}
+	pubTime := time.Unix(int64(dynamicCard.Desc.Timestamp), 0).Format("2006-01-02 15:04:05")
+	timeWidth, _ := ctx.MeasureString(pubTime)
+	ctx.DrawString(pubTime, (RenderWidth-timeWidth)/2, currentY)
+	currentY += SmallFontSize * LineHeight + 30
+
+	// 4. 绘制动态内容
+	ctx.SetColor(colorHex(ContentColor))
+	if err := LoadFont(ctx, ContentFontSize, false); err != nil {
+		return nil, err
+	}
+	var contentLines []string
 	switch cType {
-	case 1:
-		msg = append(msg, message.Text(card.User.Uname, msgType[cType], "\n",
-			card.Item.Content, "\n",
-			"转发的内容: \n"))
-		var originMsg []message.Segment
-		var co bz.Card
-		co, err = bz.LoadCardDetail(card.Origin)
-		if err != nil {
-			return
-		}
-		originMsg, err = card2msg(dynamicCard, &co, card.Item.OrigType)
-		if err != nil {
-			return
-		}
-		msg = append(msg, originMsg...)
-	case 2:
-		msg = append(msg, message.Text(card.User.Name, "在", time.Unix(int64(card.Item.UploadTime), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Item.Description))
-		for i := 0; i < len(card.Item.Pictures); i++ {
-			msg = append(msg, message.Image(card.Item.Pictures[i].ImgSrc))
-		}
-	case 4:
-		msg = append(msg, message.Text(card.User.Uname, "在", time.Unix(int64(card.Item.Timestamp), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Item.Content, "\n"))
+	case 1: // 转发
+		contentLines = WrapText(ctx, fmt.Sprintf("转发内容：%s", card.Item.Content), RenderWidth-2*Padding)
+	case 2: // 图文
+		contentLines = WrapText(ctx, card.Item.Description, RenderWidth-2*Padding)
+	case 4: // 无图+投票
+		contentLines = WrapText(ctx, card.Item.Content, RenderWidth-2*Padding)
+		// 投票内容
 		if dynamicCard.Extension.Vote != "" {
-			msg = append(msg, message.Text("【投票】", vote.Desc, "\n",
-				"截止日期: ", time.Unix(int64(vote.Endtime), 0).Format("2006-01-02 15:04:05"), "\n",
-				"参与人数: ", bz.HumanNum(vote.JoinNum), "\n",
-				"投票选项( 最多选择", vote.ChoiceCnt, "项 )\n"))
-			for i := 0; i < len(vote.Options); i++ {
-				msg = append(msg, message.Text("- ", vote.Options[i].Idx, ". ", vote.Options[i].Desc, "\n"))
-				if vote.Options[i].ImgURL != "" {
-					msg = append(msg, message.Image(vote.Options[i].ImgURL))
-				}
+			voteText := fmt.Sprintf("\n【投票】%s（截止：%s，参与：%s人）",
+				vote.Desc,
+				time.Unix(int64(vote.Endtime), 0).Format("2006-01-02"),
+				bz.HumanNum(vote.JoinNum))
+			contentLines = append(contentLines, WrapText(ctx, voteText, RenderWidth-2*Padding)...)
+			for i, opt := range vote.Options {
+				optText := fmt.Sprintf("%d. %s", i+1, opt.Desc)
+				contentLines = append(contentLines, optText)
 			}
 		}
-	case 8:
-		msg = append(msg, message.Text(card.Owner.Name, "在", time.Unix(int64(card.Pubdate), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Title))
-		msg = append(msg, message.Image(card.Pic))
-		msg = append(msg, message.Text(card.Desc, "\n",
-			card.ShareSubtitle, "\n",
-			"视频链接: ", card.ShortLink, "\n"))
-	case 16:
-		msg = append(msg, message.Text(card.User.Name, "在", time.Unix(int64(card.Item.UploadTime), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Item.Description))
-		msg = append(msg, message.Image(card.Item.Cover.Default))
-	case 64:
-		msg = append(msg, message.Text(card.Author.(map[string]any)["name"], "在", time.Unix(int64(card.PublishTime), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Title, "\n",
-			card.Summary))
-		for i := 0; i < len(card.ImageUrls); i++ {
-			msg = append(msg, message.Image(card.ImageUrls[i]))
-		}
-		if card.ID != 0 {
-			msg = append(msg, message.Text("文章链接: https://www.bilibili.com/read/cv", card.ID, "\n"))
-		}
-	case 256:
-		msg = append(msg, message.Text(card.Upper, "在", time.Unix(int64(card.Ctime), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Title))
-		msg = append(msg, message.Image(card.Cover))
-		msg = append(msg, message.Text(card.Intro, "\n"))
-		if card.ID != 0 {
-			msg = append(msg, message.Text("音频链接: https://www.bilibili.com/audio/au", card.ID, "\n"))
-		}
-
-	case 2048:
-		msg = append(msg, message.Text(card.User.Uname, msgType[cType], "\n",
-			card.Vest.Content, "\n",
-			card.Sketch.Title, "\n",
-			card.Sketch.DescText, "\n"))
-		msg = append(msg, message.Image(card.Sketch.CoverURL))
-		msg = append(msg, message.Text("分享链接: ", card.Sketch.TargetURL, "\n"))
-	case 4308:
-		if dynamicCard.Desc.UserProfile.Info.Uname != "" {
-			msg = append(msg, message.Text(dynamicCard.Desc.UserProfile.Info.Uname, msgType[cType], "\n"))
-		}
-		msg = append(msg, message.Image(card.LivePlayInfo.Cover))
-		msg = append(msg, message.Text("\n", card.LivePlayInfo.Title, "\n",
-			"房间号: ", card.LivePlayInfo.RoomID, "\n",
-			"分区: ", card.LivePlayInfo.ParentAreaName))
-		if card.LivePlayInfo.ParentAreaName != card.LivePlayInfo.AreaName {
-			msg = append(msg, message.Text("-", card.LivePlayInfo.AreaName))
-		}
-		if card.LivePlayInfo.LiveStatus == 0 {
-			msg = append(msg, message.Text("未开播 \n"))
-		} else {
-			msg = append(msg, message.Text("直播中 ", card.LivePlayInfo.WatchedShow, "\n"))
-		}
-		msg = append(msg, message.Text("直播链接: ", card.LivePlayInfo.Link))
+	case 8: // 视频
+		contentLines = WrapText(ctx, fmt.Sprintf("视频标题：%s\n简介：%s", card.Title, card.Desc), RenderWidth-2*Padding)
+	case 16: // 短视频
+		contentLines = WrapText(ctx, card.Item.Description, RenderWidth-2*Padding)
+	case 64: // 文章
+		contentLines = WrapText(ctx, fmt.Sprintf("文章标题：%s\n摘要：%s", card.Title, card.Summary), RenderWidth-2*Padding)
+	case 256: // 音频
+		contentLines = WrapText(ctx, fmt.Sprintf("音频标题：%s\n简介：%s", card.Title, card.Intro), RenderWidth-2*Padding)
+	case 2048: // 简报
+		contentLines = WrapText(ctx, fmt.Sprintf("%s\n%s", card.Vest.Content, card.Sketch.DescText), RenderWidth-2*Padding)
+	case 4308: // 直播
+		contentLines = WrapText(ctx, fmt.Sprintf("直播标题：%s\n分区：%s-%s\n状态：%s",
+			card.LivePlayInfo.Title,
+			card.LivePlayInfo.ParentAreaName,
+			card.LivePlayInfo.AreaName,
+			map[int]string{0: "未开播", 1: "直播中"}[card.LivePlayInfo.LiveStatus]), RenderWidth-2*Padding)
 	default:
-		msg = append(msg, message.Text("动态id: ", dynamicCard.Desc.DynamicIDStr, "未知动态类型: ", cType, "\n"))
+		contentLines = WrapText(ctx, fmt.Sprintf("动态ID：%s", dynamicCard.Desc.DynamicIDStr), RenderWidth-2*Padding)
 	}
-	if dynamicCard.Desc.DynamicIDStr != "" {
-		msg = append(msg, message.Text("动态链接: ", bz.TURL, dynamicCard.Desc.DynamicIDStr))
+	contentLines = TruncateText(contentLines, MaxContentLines+3)
+	for _, line := range contentLines {
+		ctx.DrawString(line, Padding, currentY)
+		currentY += ContentFontSize * LineHeight
 	}
-	return
-}
+	currentY += 20
 
-// card2msg cType=1, 2, 4, 8, 16, 64, 256, 2048, 4200, 4308时,处理Card字符串,cType为card类型
-func card2msg(dynamicCard *bz.DynamicCard, card *bz.Card, cType int) (msg []message.Segment, err error) {
-	var (
-		vote bz.Vote
-	)
-	msg = make([]message.Segment, 0, 16)
-	// 生成消息
+	// 5. 绘制图片（如果有）
+	var imgURLs []string
 	switch cType {
-	case 1:
-		msg = append(msg, message.Text(card.User.Uname, msgType[cType], "\n",
-			card.Item.Content, "\n",
-			"转发的内容: \n"))
-		var originMsg []message.Segment
-		var co bz.Card
-		co, err = bz.LoadCardDetail(card.Origin)
-		if err != nil {
-			return
-		}
-		originMsg, err = card2msg(dynamicCard, &co, card.Item.OrigType)
-		if err != nil {
-			return
-		}
-		msg = append(msg, originMsg...)
 	case 2:
-		msg = append(msg, message.Text(card.User.Name, "在", time.Unix(int64(card.Item.UploadTime), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Item.Description))
-		for i := 0; i < len(card.Item.Pictures); i++ {
-			msg = append(msg, message.Image(card.Item.Pictures[i].ImgSrc))
-		}
-	case 4:
-		msg = append(msg, message.Text(card.User.Uname, "在", time.Unix(int64(card.Item.Timestamp), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Item.Content, "\n"))
-		if dynamicCard.Extension.Vote != "" {
-			msg = append(msg, message.Text("【投票】", vote.Desc, "\n",
-				"截止日期: ", time.Unix(int64(vote.Endtime), 0).Format("2006-01-02 15:04:05"), "\n",
-				"参与人数: ", bz.HumanNum(vote.JoinNum), "\n",
-				"投票选项( 最多选择", vote.ChoiceCnt, "项 )\n"))
-			for i := 0; i < len(vote.Options); i++ {
-				msg = append(msg, message.Text("- ", vote.Options[i].Idx, ". ", vote.Options[i].Desc, "\n"))
-				if vote.Options[i].ImgURL != "" {
-					msg = append(msg, message.Image(vote.Options[i].ImgURL))
-				}
-			}
+		for _, pic := range card.Item.Pictures {
+			imgURLs = append(imgURLs, pic.ImgSrc)
 		}
 	case 8:
-		msg = append(msg, message.Text(card.Owner.Name, "在", time.Unix(int64(card.Pubdate), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Title))
-		msg = append(msg, message.Image(card.Pic))
-		msg = append(msg, message.Text(card.Desc, "\n",
-			card.ShareSubtitle, "\n",
-			"视频链接: ", card.ShortLink, "\n"))
+		imgURLs = append(imgURLs, card.Pic)
 	case 16:
-		msg = append(msg, message.Text(card.User.Name, "在", time.Unix(int64(card.Item.UploadTime), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Item.Description))
-		msg = append(msg, message.Image(card.Item.Cover.Default))
+		imgURLs = append(imgURLs, card.Item.Cover.Default)
 	case 64:
-		msg = append(msg, message.Text(card.Author.(map[string]any)["name"], "在", time.Unix(int64(card.PublishTime), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Title, "\n",
-			card.Summary))
-		for i := 0; i < len(card.ImageUrls); i++ {
-			msg = append(msg, message.Image(card.ImageUrls[i]))
-		}
-		if card.ID != 0 {
-			msg = append(msg, message.Text("文章链接: https://www.bilibili.com/read/cv", card.ID, "\n"))
-		}
+		imgURLs = card.ImageUrls
 	case 256:
-		msg = append(msg, message.Text(card.Upper, "在", time.Unix(int64(card.Ctime), 0).Format("2006-01-02 15:04:05"), msgType[cType], "\n",
-			card.Title))
-		msg = append(msg, message.Image(card.Cover))
-		msg = append(msg, message.Text(card.Intro, "\n"))
-		if card.ID != 0 {
-			msg = append(msg, message.Text("音频链接: https://www.bilibili.com/audio/au", card.ID, "\n"))
-		}
-
+		imgURLs = append(imgURLs, card.Cover)
 	case 2048:
-		msg = append(msg, message.Text(card.User.Uname, msgType[cType], "\n",
-			card.Vest.Content, "\n",
-			card.Sketch.Title, "\n",
-			card.Sketch.DescText, "\n"))
-		msg = append(msg, message.Image(card.Sketch.CoverURL))
-		msg = append(msg, message.Text("分享链接: ", card.Sketch.TargetURL, "\n"))
+		imgURLs = append(imgURLs, card.Sketch.CoverURL)
 	case 4308:
-		if dynamicCard.Desc.UserProfile.Info.Uname != "" {
-			msg = append(msg, message.Text(dynamicCard.Desc.UserProfile.Info.Uname, msgType[cType], "\n"))
-		}
-		msg = append(msg, message.Image(card.LivePlayInfo.Cover))
-		msg = append(msg, message.Text("\n", card.LivePlayInfo.Title, "\n",
-			"房间号: ", card.LivePlayInfo.RoomID, "\n",
-			"分区: ", card.LivePlayInfo.ParentAreaName))
-		if card.LivePlayInfo.ParentAreaName != card.LivePlayInfo.AreaName {
-			msg = append(msg, message.Text("-", card.LivePlayInfo.AreaName))
-		}
-		if card.LivePlayInfo.LiveStatus == 0 {
-			msg = append(msg, message.Text("未开播 \n"))
-		} else {
-			msg = append(msg, message.Text("直播中 ", card.LivePlayInfo.WatchedShow, "\n"))
-		}
-		msg = append(msg, message.Text("直播链接: ", card.LivePlayInfo.Link))
-	default:
-		msg = append(msg, message.Text("动态id: ", dynamicCard.Desc.DynamicIDStr, "未知动态类型: ", cType, "\n"))
+		imgURLs = append(imgURLs, card.LivePlayInfo.Cover)
 	}
-	if dynamicCard.Desc.DynamicIDStr != "" {
-		msg = append(msg, message.Text("动态链接: ", bz.TURL, dynamicCard.Desc.DynamicIDStr))
+	if len(imgURLs) > 0 {
+		currentY, err = DrawMultiImages(ctx, imgURLs, Padding, currentY, 300)
+		if err != nil {
+			log.Warnln("[bilibili-render] 绘制动态图片失败:", err)
+		}
 	}
-	return
+
+	// 6. 绘制链接
+	ctx.SetColor(colorHex(HighlightColor))
+	if err := LoadFont(ctx, SmallFontSize, false); err != nil {
+		return nil, err
+	}
+	linkText := fmt.Sprintf("动态链接：%s%s", bz.TURL, dynamicCard.Desc.DynamicIDStr)
+	linkWidth, _ := ctx.MeasureString(linkText)
+	ctx.DrawString(linkText, (RenderWidth-linkWidth)/2, currentY)
+	currentY += SmallFontSize * LineHeight + Padding
+
+	// 调整画布高度
+	finalImg := ctx.Image().(*image.RGBA)
+	finalImg = finalImg.SubImage(image.Rect(0, 0, RenderWidth, int(currentY))).(*image.RGBA)
+
+	// 转字节流
+	var buf bytes.Buffer
+	if err := imgfactory.WriteTo(finalImg, &buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
-// dynamicDetail 用动态id查动态信息
-func dynamicDetail(cookiecfg *bz.CookieConfig, dynamicIDStr string) (msg []message.Segment, err error) {
+// ------------------------------ 专栏渲染 ------------------------------
+func RenderArticleCard(card bz.Card, cvID string) (imgData []byte, err error) {
+	cacheKey := fmt.Sprintf("article_%s.png", cvID)
+	cacheFile := cachePath + cacheKey
+	if file.IsExist(cacheFile) {
+		return os.ReadFile(cacheFile)
+	}
+
+	// 1. 初始化画布
+	ctx := NewRenderContext(800)
+	defer func() {
+		if err == nil {
+			f, _ := os.Create(cacheFile)
+			defer f.Close()
+			imgfactory.WriteTo(ctx.Image(), f)
+		}
+	}()
+
+	currentY := Padding
+
+	// 2. 绘制标题
+	ctx.SetColor(colorHex(TitleColor))
+	if err := LoadFont(ctx, TitleFontSize, true); err != nil {
+		return nil, err
+	}
+	titleLines := WrapText(ctx, card.Title, RenderWidth-2*Padding)
+	for _, line := range titleLines {
+		lineWidth, _ := ctx.MeasureString(line)
+		ctx.DrawString(line, (RenderWidth-lineWidth)/2, currentY)
+		currentY += TitleFontSize * LineHeight
+	}
+	currentY += 20
+
+	// 3. 绘制作者和数据
+	ctx.SetColor(colorHex(SubTitleColor))
+	if err := LoadFont(ctx, SubTitleSize, false); err != nil {
+		return nil, err
+	}
+	authorText := fmt.Sprintf("作者：%s", card.AuthorName)
+	ctx.DrawString(authorText, Padding, currentY)
+	// 数据统计
+	dataText := fmt.Sprintf("阅读：%s | 评论：%s | 发布时间：%s",
+		bz.HumanNum(card.Stats.View),
+		bz.HumanNum(card.Stats.Reply),
+		time.Unix(int64(card.PublishTime), 0).Format("2006-01-02"))
+	dataWidth, _ := ctx.MeasureString(dataText)
+	ctx.DrawString(dataText, RenderWidth-Padding-dataWidth, currentY)
+	currentY += SubTitleSize * LineHeight + 30
+
+	// 4. 绘制摘要
+	ctx.SetColor(colorHex(ContentColor))
+	if err := LoadFont(ctx, ContentFontSize, false); err != nil {
+		return nil, err
+	}
+	ctx.DrawString("摘要：", Padding, currentY)
+	currentY += ContentFontSize * LineHeight
+	summaryLines := WrapText(ctx, card.Summary, RenderWidth-2*Padding-20)
+	summaryLines = TruncateText(summaryLines, MaxContentLines)
+	for _, line := range summaryLines {
+		ctx.DrawString(line, Padding+20, currentY)
+		currentY += ContentFontSize * LineHeight
+	}
+	currentY += 30
+
+	// 5. 绘制配图
+	if len(card.OriginImageUrls) > 0 {
+		currentY, err = DrawMultiImages(ctx, card.OriginImageUrls, Padding, currentY, 350)
+		if err != nil {
+			log.Warnln("[bilibili-render] 绘制专栏图片失败:", err)
+		}
+	}
+
+	// 6. 绘制链接
+	ctx.SetColor(colorHex(HighlightColor))
+	if err := LoadFont(ctx, SmallFontSize, false); err != nil {
+		return nil, err
+	}
+	linkText := fmt.Sprintf("文章链接：%s%s", bz.CVURL, cvID)
+	linkWidth, _ := ctx.MeasureString(linkText)
+	ctx.DrawString(linkText, (RenderWidth-linkWidth)/2, currentY)
+	currentY += SmallFontSize * LineHeight + Padding
+
+	// 调整画布高度
+	finalImg := ctx.Image().(*image.RGBA)
+	finalImg = finalImg.SubImage(image.Rect(0, 0, RenderWidth, int(currentY))).(*image.RGBA)
+
+	// 转字节流
+	var buf bytes.Buffer
+	if err := imgfactory.WriteTo(finalImg, &buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// ------------------------------ 直播间渲染 ------------------------------
+func RenderLiveCard(card bz.RoomCard) (imgData []byte, err error) {
+	cacheKey := fmt.Sprintf("live_%d.png", card.RoomInfo.RoomID)
+	cacheFile := cachePath + cacheKey
+	if file.IsExist(cacheFile) {
+		return os.ReadFile(cacheFile)
+	}
+
+	// 1. 初始化画布
+	ctx := NewRenderContext(800)
+	defer func() {
+		if err == nil {
+			f, _ := os.Create(cacheFile)
+			defer f.Close()
+			imgfactory.WriteTo(ctx.Image(), f)
+		}
+	}()
+
+	currentY := Padding
+
+	// 2. 绘制标题
+	ctx.SetColor(colorHex(TitleColor))
+	if err := LoadFont(ctx, TitleFontSize, true); err != nil {
+		return nil, err
+	}
+	titleText := fmt.Sprintf("直播间：%s", card.RoomInfo.Title)
+	titleWidth, _ := ctx.MeasureString(titleText)
+	ctx.DrawString(titleText, (RenderWidth-titleWidth)/2, currentY)
+	currentY += TitleFontSize * LineHeight + 20
+
+	// 3. 绘制封面图
+	if card.RoomInfo.Keyframe != "" {
+		coverImg, err := DrawImageWithLimit(ctx, card.RoomInfo.Keyframe, RenderWidth-2*Padding, coverMaxHeight)
+		if err == nil {
+			coverBounds := coverImg.Bounds()
+			coverHeight := float64(coverBounds.Max.Y - coverBounds.Min.Y)
+			ctx.DrawImage(coverImg, int(Padding), int(currentY))
+			currentY += coverHeight + 30
+		}
+	}
+
+	// 4. 绘制主播信息
+	ctx.SetColor(colorHex(SubTitleColor))
+	if err := LoadFont(ctx, SubTitleSize, false); err != nil {
+		return nil, err
+	}
+	anchorText := fmt.Sprintf("主播：%s", card.AnchorInfo.BaseInfo.Uname)
+	ctx.DrawString(anchorText, Padding, currentY)
+	currentY += SubTitleSize * LineHeight
+
+	// 直播间信息
+	infoLines := []string{
+		fmt.Sprintf("房间号：%d（短号：%d）", card.RoomInfo.RoomID, card.RoomInfo.ShortID),
+		fmt.Sprintf("分区：%s-%s", card.RoomInfo.ParentAreaName, card.RoomInfo.AreaName),
+		fmt.Sprintf("状态：%s", map[int]string{0: "未开播", 1: fmt.Sprintf("直播中（%s人气）", bz.HumanNum(card.RoomInfo.Online))}[card.RoomInfo.LiveStatus]),
+	}
+	ctx.SetColor(colorHex(ContentColor))
+	if err := LoadFont(ctx, ContentFontSize, false); err != nil {
+		return nil, err
+	}
+	for _, line := range infoLines {
+		ctx.DrawString(line, Padding+20, currentY)
+		currentY += ContentFontSize * LineHeight
+	}
+	currentY += 30
+
+	// 5. 绘制链接
+	ctx.SetColor(colorHex(HighlightColor))
+	if err := LoadFont(ctx, SmallFontSize, false); err != nil {
+		return nil, err
+	}
+	linkText := fmt.Sprintf("直播间链接：%s%d", bz.LURL, card.RoomInfo.RoomID)
+	linkWidth, _ := ctx.MeasureString(linkText)
+	ctx.DrawString(linkText, (RenderWidth-linkWidth)/2, currentY)
+	currentY += SmallFontSize * LineHeight + Padding
+
+	// 调整画布高度
+	finalImg := ctx.Image().(*image.RGBA)
+	finalImg = finalImg.SubImage(image.Rect(0, 0, RenderWidth, int(currentY))).(*image.RGBA)
+
+	// 转字节流
+	var buf bytes.Buffer
+	if err := imgfactory.WriteTo(finalImg, &buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// ------------------------------ 原有函数替换 ------------------------------
+// dynamicDetail 用动态id查动态信息（返回图片）
+func dynamicDetail(cookiecfg *bz.CookieConfig, dynamicIDStr string) (imgData []byte, err error) {
 	dyc, err := bz.GetDynamicDetail(cookiecfg, dynamicIDStr)
 	if err != nil {
-		return
+		return nil, err
 	}
-	return dynamicCard2msg(&dyc)
+	return RenderDynamicCard(&dyc)
 }
 
-// articleCard2msg 专栏转消息
-func articleCard2msg(card bz.Card, defaultID string) (msg []message.Segment) {
-	msg = make([]message.Segment, 0, 16)
-	for i := 0; i < len(card.OriginImageUrls); i++ {
-		msg = append(msg, message.Image(card.OriginImageUrls[i]))
-	}
-	msg = append(msg, message.Text("\n", card.Title, "\n", "UP主: ", card.AuthorName, "\n",
-		"阅读: ", bz.HumanNum(card.Stats.View), " 评论: ", bz.HumanNum(card.Stats.Reply), "\n",
-		bz.CVURL, defaultID))
-	return
+// articleCard2msg 专栏转图片
+func articleCard2msg(card bz.Card, defaultID string) (imgData []byte, err error) {
+	return RenderArticleCard(card, defaultID)
 }
 
-// liveCard2msg 直播卡片转消息
-func liveCard2msg(card bz.RoomCard) (msg []message.Segment) {
-	msg = make([]message.Segment, 0, 16)
-	msg = append(msg, message.Image(card.RoomInfo.Keyframe))
-	msg = append(msg, message.Text("\n", card.RoomInfo.Title, "\n",
-		"主播: ", card.AnchorInfo.BaseInfo.Uname, "\n",
-		"房间号: ", card.RoomInfo.RoomID, "\n"))
-	if card.RoomInfo.ShortID != 0 {
-		msg = append(msg, message.Text("短号: ", card.RoomInfo.ShortID, "\n"))
-	}
-	msg = append(msg, message.Text("分区: ", card.RoomInfo.ParentAreaName))
-	if card.RoomInfo.ParentAreaName != card.RoomInfo.AreaName {
-		msg = append(msg, message.Text("-", card.RoomInfo.AreaName))
-	}
-	if card.RoomInfo.LiveStatus == 0 {
-		msg = append(msg, message.Text("未开播 \n"))
-	} else {
-		msg = append(msg, message.Text("直播中 ", bz.HumanNum(card.RoomInfo.Online), "人气\n"))
-	}
-	if card.RoomInfo.ShortID != 0 {
-		msg = append(msg, message.Text("直播间链接: ", bz.LURL, card.RoomInfo.ShortID))
-	} else {
-		msg = append(msg, message.Text("直播间链接: ", bz.LURL, card.RoomInfo.RoomID))
-	}
-
-	return
+// liveCard2msg 直播卡片转图片
+func liveCard2msg(card bz.RoomCard) (imgData []byte, err error) {
+	return RenderLiveCard(card)
 }
 
-// videoCard2msg 视频卡片转消息
-func videoCard2msg(card bz.Card) (msg []message.Segment, err error) {
-	var (
-		mCard       bz.MemberCard
-		onlineTotal bz.OnlineTotal
-	)
-	msg = make([]message.Segment, 0, 16)
-	mCard, err = bz.GetMemberCard(card.Owner.Mid)
-	msg = append(msg, message.Text("标题: ", card.Title, "\n"))
-	if card.Rights.IsCooperation == 1 {
-		for i := 0; i < len(card.Staff); i++ {
-			msg = append(msg, message.Text(card.Staff[i].Title, ": ", card.Staff[i].Name, " 粉丝: ", bz.HumanNum(card.Staff[i].Follower), "\n"))
-		}
-	} else {
-		if err != nil {
-			msg = append(msg, message.Text("UP主: ", card.Owner.Name, "\n"))
-		} else {
-			msg = append(msg, message.Text("UP主: ", card.Owner.Name, " 粉丝: ", bz.HumanNum(mCard.Fans), "\n"))
-		}
-	}
-	msg = append(msg, message.Image(card.Pic))
-	data, err := web.GetData(fmt.Sprintf(bz.OnlineTotalURL, card.BvID, card.CID))
-	if err != nil {
-		return
-	}
-	err = json.Unmarshal(data, &onlineTotal)
-	if err != nil {
-		return
-	}
-	msg = append(msg, message.Text("👀播放: ", bz.HumanNum(card.Stat.View), " 💬弹幕: ", bz.HumanNum(card.Stat.Danmaku),
-		"\n👍点赞: ", bz.HumanNum(card.Stat.Like), " 💰投币: ", bz.HumanNum(card.Stat.Coin),
-		"\n📁收藏: ", bz.HumanNum(card.Stat.Favorite), " 🔗分享: ", bz.HumanNum(card.Stat.Share),
-		"\n📝简介: ", card.Desc,
-		"\n🏄‍♂️ 总共 ", onlineTotal.Data.Total, " 人在观看，", onlineTotal.Data.Count, " 人在网页端观看\n",
-		bz.VURL, card.BvID, "\n\n"))
-	return
+// videoCard2msg 视频卡片转图片（含总结）
+func videoCard2msg(card bz.Card, summaryMsg []message.Segment) (imgData []byte, err error) {
+	return RenderVideoCard(card, summaryMsg)
+}
+
+// 恢复 msgType 定义（动态类型映射）
+var msgType = map[int]string{
+	1:    "转发了动态",
+	2:    "发布了图文动态",
+	4:    "发布了文字动态",
+	8:    "投稿了视频",
+	16:   "投稿了短视频",
+	64:   "投稿了专栏",
+	256:  "投稿了音频",
+	2048: "发布了简报",
+	4200: "发布了直播预告",
+	4308: "发布了直播动态",
 }
