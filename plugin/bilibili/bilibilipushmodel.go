@@ -3,8 +3,15 @@ package bilibili
 import (
 	"encoding/json"
 	"os"
+	"sync" // 新增：用于互斥锁
 
 	"github.com/jinzhu/gorm"
+)
+
+// 补全缺失的 upMap（匹配代码中 upMap[v.BilibiliUID] = v.Name 的使用场景）
+var (
+	upMap   = make(map[int64]string) // key: BilibiliUID(int64), value: 用户名(string)
+	upMapMu sync.RWMutex             // 并发安全锁（避免多协程操作map panic）
 )
 
 // bilibilipushdb bilibili推送数据库
@@ -142,7 +149,7 @@ func (bdb *bilibilipushdb) getAllPushByGroup(groupID int64) (bpl []bilibilipush)
 func (bdb *bilibilipushdb) getAtAll(groupID int64) (res int64) {
 	db := (*gorm.DB)(bdb)
 	var bpl bilibiliAt
-	db.Model(&bilibilipush{}).Find(&bpl, "group_id = ?", groupID)
+	db.Model(&bilibiliAt{}).Find(&bpl, "group_id = ?", groupID) // 修复：原Model是&bilibilipush{}，改为&bilibiliAt{}
 	res = bpl.AtAll
 	return
 }
@@ -181,6 +188,8 @@ func (bdb *bilibilipushdb) updateAllUp() {
 	db := (*gorm.DB)(bdb)
 	var bul []bilibiliup
 	db.Model(&bilibiliup{}).Find(&bul)
+	upMapMu.Lock() // 加锁，并发安全
+	defer upMapMu.Unlock()
 	for _, v := range bul {
 		upMap[v.BilibiliUID] = v.Name
 	}
