@@ -2,18 +2,26 @@
 package bilibili
 
 import (
+	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"strings"
 
+	"github.com/FloatTech/AnimeAPI/bilibili"
 	"github.com/FloatTech/floatbox/file"
+	"github.com/FloatTech/floatbox/web"
 	"github.com/FloatTech/gg"
 	"github.com/FloatTech/imgfactory"
+	"github.com/FloatTech/zbputils/control"
 	"github.com/FloatTech/zbputils/img/text"
-	bz "github.com/FloatTech/AnimeAPI/bilibili"
+	"github.com/sirupsen/logrus"
 )
 
-// 全局渲染配置（统一风格）
+// 日志实例（包内共用）
+var log = logrus.WithField("module", "bilibili-render-utils")
+
+// 全局渲染配置（统一风格，供 card2msg.go 复用）
 const (
 	RenderWidth     = 1200                  // 图片固定宽度
 	TitleFontSize   = 36.0                  // 标题字体大小
@@ -163,10 +171,10 @@ func DrawMultiImages(ctx *gg.Context, imgURLs []string, startX, startY, maxHeigh
 		}
 		tip := fmt.Sprintf("共%d张图片，仅展示前%d张", len(imgURLs), MaxImages)
 		tipWidth, _ := ctx.MeasureString(tip)
-		ctx.DrawString(tip, (RenderWidth-tipWidth)/2, startY+maxHeight+30)
-		return startY + maxHeight + 40, nil
+		ctx.DrawString(tip, (RenderWidth-tipWidth)/2, startY+maxImgHeight+30)
+		return startY + maxImgHeight + 40, nil
 	}
-	return startY + maxHeight + 20, nil
+	return startY + maxImgHeight + 20, nil
 }
 
 // colorHex 十六进制颜色转color.RGBA
